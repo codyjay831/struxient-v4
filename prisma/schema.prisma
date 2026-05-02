@@ -1,0 +1,559 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MANAGER
+  OFFICE
+  SALES
+  MEMBER
+  CREW_LEAD
+  FIELD_WORKER
+}
+
+enum CustomerKind {
+  PERSON
+  COMPANY
+  UNKNOWN
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum CustomerContactType {
+  EMAIL
+  PHONE
+  MOBILE
+  OTHER
+}
+
+enum OpportunityStatus {
+  NEW
+  QUALIFIED
+  INFO_GATHERING
+  SITE_VISIT_NEEDED
+  QUOTE_DRAFT_READY
+  QUOTE_DRAFT_CREATED
+  LOST
+  NO_QUOTE
+  ARCHIVED
+}
+
+enum QuoteStatus {
+  DRAFT
+  MISSING_INFO
+  NEEDS_REVIEW
+  READY_TO_SEND
+  SENT
+  REVISED
+  DECLINED
+}
+
+enum QuoteLineMode {
+  REQUIRED
+  OPTIONAL
+  ALTERNATE
+  ALLOWANCE
+  REMOVED
+}
+
+enum PricingMode {
+  FIXED_PRICE
+  PRICE_ON_REQUEST
+  ALLOWANCE
+  INCLUDED
+  NO_CHARGE
+}
+
+/// Quote workspace internal prep only. Line-item execution uses QuoteLineExecutionStage / QuoteLineExecutionTask.
+enum QuoteTaskKind {
+  QUOTE_PREP
+}
+
+enum QuoteTaskStatus {
+  NOT_READY
+  READY
+  IN_PROGRESS
+  BLOCKED
+  WAITING
+  NEEDS_REVIEW
+  COMPLETE
+  SKIPPED
+  CANCELED
+}
+
+enum QuoteAssumptionVisibility {
+  CUSTOMER_VISIBLE
+  INTERNAL_ONLY
+}
+
+enum OpportunityPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum OpportunityTaskStatus {
+  NOT_READY
+  READY
+  IN_PROGRESS
+  WAITING
+  BLOCKED
+  NEEDS_REVIEW
+  COMPLETE
+  CANCELED
+}
+
+enum OpportunityTaskKind {
+  INTAKE
+  SITE_VISIT
+  REVIEW
+  FOLLOW_UP
+  OTHER
+}
+
+/// Organization-owned reusable quote/work blocks (copy-only seeds; not live dependencies).
+enum QuoteWorkTemplateKind {
+  LINE_ITEM_WITH_PLAN
+  STAGE_WITH_TASKS
+  TASK
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String?  @unique
+  createdAt DateTime @default(now())
+
+  memberships               Membership[]
+  auditEvents               AuditEvent[]
+  customers                 Customer[]
+  opportunities             Opportunity[]
+  opportunityActivityEvents OpportunityActivityEvent[]
+  quotes                    Quote[]
+  quoteLineItems               QuoteLineItem[]
+  quoteTasks                   QuoteTask[]
+  quoteLineExecutionStages     QuoteLineExecutionStage[]
+  quoteLineExecutionTasks      QuoteLineExecutionTask[]
+  quoteAssumptions             QuoteAssumption[]
+  quoteActivityEvents          QuoteActivityEvent[]
+  quoteWorkTemplates           QuoteWorkTemplate[]
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  passwordHash  String
+  image         String?
+  createdAt     DateTime  @default(now())
+
+  memberships               Membership[]
+  accounts                  Account[]
+  sessions                  Session[]
+  salesOwnedOpportunities   Opportunity[]              @relation("OpportunitySalesOwner")
+  assignedOpportunityTasks  OpportunityTask[]          @relation("OpportunityTaskAssignee")
+  opportunityActivityEvents OpportunityActivityEvent[] @relation("OpportunityActivityActor")
+  quotesCreated             Quote[]                    @relation("QuoteCreatedBy")
+  quotesOwned               Quote[]                    @relation("QuoteOwner")
+  quoteWorkTemplatesCreated QuoteWorkTemplate[]        @relation("QuoteWorkTemplateCreatedBy")
+}
+
+model Membership {
+  id             String         @id @default(cuid())
+  userId         String
+  organizationId String
+  role           MembershipRole @default(MEMBER)
+  createdAt      DateTime       @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@index([userId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model AuditEvent {
+  id             String   @id @default(cuid())
+  organizationId String?
+  actorUserId    String?
+  type           String
+  payload        Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([type, createdAt])
+}
+
+model Customer {
+  id             String         @id @default(cuid())
+  organizationId String
+  displayName    String
+  kind           CustomerKind   @default(UNKNOWN)
+  status         CustomerStatus @default(ACTIVE)
+  notes          String?        @db.Text
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization   Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactMethods CustomerContactMethod[]
+  opportunities  Opportunity[]
+  activityEvents OpportunityActivityEvent[]
+  quotes           Quote[]
+
+  @@index([organizationId])
+  @@index([organizationId, updatedAt])
+}
+
+model CustomerContactMethod {
+  id         String              @id @default(cuid())
+  customerId String
+  type       CustomerContactType
+  value      String
+  isPrimary  Boolean             @default(false)
+  okToEmail  Boolean             @default(false)
+  okToSms    Boolean             @default(false)
+  label      String?
+  archivedAt DateTime?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([customerId, archivedAt])
+}
+
+model Opportunity {
+  id                  String              @id @default(cuid())
+  organizationId      String
+  customerId          String
+  title               String
+  serviceType         String
+  source              String
+  status              OpportunityStatus   @default(NEW)
+  priority            OpportunityPriority @default(NORMAL)
+  serviceAddressText  String?             @db.Text
+  serviceAddressTbd   Boolean             @default(false)
+  contactIntakeWaived Boolean             @default(false)
+  scopeIntent         String              @db.Text
+  desiredTimeline     String?             @db.Text
+  salesOwnerUserId    String?
+  qualificationStatus String?
+  estimatedValue      Decimal?            @db.Decimal(12, 2)
+  lostReason          String?             @db.Text
+  noQuoteReason       String?             @db.Text
+  followUpAt          DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  organization   Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer       Customer                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  salesOwner     User?                      @relation("OpportunitySalesOwner", fields: [salesOwnerUserId], references: [id], onDelete: SetNull)
+  tasks          OpportunityTask[]
+  activityEvents OpportunityActivityEvent[]
+  quotes         Quote[]
+
+  @@index([organizationId])
+  @@index([organizationId, customerId])
+  @@index([organizationId, status])
+  @@index([organizationId, updatedAt])
+}
+
+model Quote {
+  id                   String        @id @default(cuid())
+  organizationId     String
+  customerId         String
+  opportunityId      String
+  displayNumber        Int
+  status               QuoteStatus   @default(DRAFT)
+  title                String
+  serviceAddressText   String?       @db.Text
+  serviceAddressTbd    Boolean       @default(false)
+  scopeIntent          String        @db.Text
+  scopeSummary         String?       @db.Text
+  customerFacingIntro  String?       @db.Text
+  internalNotes        String?       @db.Text
+  pricingSubtotalCents Int?
+  totalCents           Int?
+  sentAt               DateTime?
+  sentSnapshotJson     Json?
+  createdById          String
+  ownerUserId          String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  opportunity  Opportunity  @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  createdBy    User         @relation("QuoteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  owner        User?        @relation("QuoteOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  lineItems    QuoteLineItem[]
+  tasks        QuoteTask[]
+  assumptions  QuoteAssumption[]
+  activityEvents QuoteActivityEvent[]
+
+  @@unique([organizationId, displayNumber])
+  @@index([organizationId])
+  @@index([organizationId, opportunityId])
+  @@index([organizationId, customerId])
+  @@index([organizationId, status])
+  @@index([organizationId, updatedAt])
+}
+
+model QuoteLineItem {
+  id                  String       @id @default(cuid())
+  organizationId    String
+  quoteId             String
+  title               String
+  customerDescription String       @db.Text
+  quantity            Decimal      @db.Decimal(12, 4)
+  unitPriceCents      Int?
+  lineTotalCents      Int?
+  pricingMode         PricingMode
+  sortOrder           Int          @default(0)
+  lineMode            QuoteLineMode @default(REQUIRED)
+  internalNotes       String?      @db.Text
+  /// Informational only: line was created from a template insert (no live FK).
+  sourceTemplateId       String?
+  sourceTemplateKind     QuoteWorkTemplateKind?
+  sourceTemplateVersion  Int?
+  sourceTemplateName     String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote             Quote                    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  assumptions       QuoteAssumption[]
+  executionStages   QuoteLineExecutionStage[]
+
+  @@index([organizationId])
+  @@index([quoteId])
+  @@index([organizationId, quoteId])
+}
+
+model QuoteWorkTemplate {
+  id               String                @id @default(cuid())
+  organizationId String
+  kind             QuoteWorkTemplateKind
+  name             String
+  description      String?               @db.Text
+  tagsJson         Json?
+  payloadVersion   Int                   @default(1)
+  contentVersion   Int                   @default(1)
+  payloadJson      Json
+  archivedAt       DateTime?
+  createdById      String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("QuoteWorkTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, kind])
+  @@index([organizationId, archivedAt])
+}
+
+/// Quoted execution plan grouping for a line item (dormant until a future job phase). Template-friendly: quote-owned rows, no live template FK.
+model QuoteLineExecutionStage {
+  id               String   @id @default(cuid())
+  organizationId   String
+  quoteLineItemId  String
+  title            String
+  sortOrder        Int      @default(0)
+  internalNotes    String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quoteLineItem QuoteLineItem   @relation(fields: [quoteLineItemId], references: [id], onDelete: Cascade)
+  tasks         QuoteLineExecutionTask[]
+
+  @@index([organizationId])
+  @@index([quoteLineItemId])
+  @@index([organizationId, quoteLineItemId])
+}
+
+/// Dormant quoted execution step under a stage. Same status vocabulary as quote-prep tasks for consistency.
+model QuoteLineExecutionTask {
+  id                       String          @id @default(cuid())
+  organizationId         String
+  stageId                String
+  title                  String
+  description            String?         @db.Text
+  status                   QuoteTaskStatus @default(NOT_READY)
+  isRequired               Boolean         @default(false)
+  sortOrder                Int             @default(0)
+  assignedRole             String?
+  estimatedDurationMinutes Int?
+  customerVisible          Boolean         @default(false)
+  customerLabel            String?
+  internalNotes            String?         @db.Text
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stage        QuoteLineExecutionStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([stageId])
+}
+
+/// Internal quote-prep / sales-admin checklist only (never job execution).
+model QuoteTask {
+  id                       String           @id @default(cuid())
+  organizationId         String
+  quoteId                String
+  kind                     QuoteTaskKind    @default(QUOTE_PREP)
+  title                    String
+  description              String?          @db.Text
+  status                   QuoteTaskStatus  @default(NOT_READY)
+  isRequired               Boolean          @default(false)
+  sortOrder                Int              @default(0)
+  assignedRole             String?
+  estimatedDurationMinutes Int?
+  customerVisible          Boolean          @default(false)
+  customerLabel            String?
+  internalNotes            String?          @db.Text
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote        Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([quoteId])
+  @@index([organizationId, quoteId])
+}
+
+model QuoteAssumption {
+  id             String                   @id @default(cuid())
+  organizationId String
+  quoteId        String
+  quoteLineItemId String?
+  visibility     QuoteAssumptionVisibility
+  text           String                   @db.Text
+  sortOrder      Int                      @default(0)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote         Quote          @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteLineItem QuoteLineItem? @relation(fields: [quoteLineItemId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([quoteId])
+}
+
+model QuoteActivityEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+  quoteId        String
+  opportunityId  String?
+  customerId     String?
+  actorUserId    String?
+  eventType      String
+  summary        String   @db.Text
+  payload        Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote        Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, quoteId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model OpportunityTask {
+  id             String                @id @default(cuid())
+  opportunityId  String
+  title          String
+  status         OpportunityTaskStatus @default(NOT_READY)
+  kind           OpportunityTaskKind   @default(INTAKE)
+  isRequired     Boolean               @default(false)
+  dueAt          DateTime?
+  assigneeUserId String?
+  source         String                @default("MANUAL")
+  outcome        String?               @db.Text
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  assignee    User?       @relation("OpportunityTaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+
+  @@index([opportunityId])
+  @@index([opportunityId, status])
+}
+
+model OpportunityActivityEvent {
+  id              String   @id @default(cuid())
+  organizationId  String
+  opportunityId   String?
+  customerId      String?
+  eventType       String
+  actorUserId     String?
+  summary         String   @db.Text
+  payload         Json?
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  opportunity  Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  customer     Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  actor        User?        @relation("OpportunityActivityActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, opportunityId, createdAt])
+  @@index([organizationId, customerId, createdAt])
+  @@index([eventType, createdAt])
+}
