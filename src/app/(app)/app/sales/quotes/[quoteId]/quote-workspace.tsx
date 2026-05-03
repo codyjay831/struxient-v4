@@ -86,6 +86,33 @@ function clipText(s: string | null | undefined, max: number) {
   return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
 }
 
+function countLineExecutionStats(line: QuoteWorkspaceProps["quote"]["lineItems"][number]) {
+  const stages = line.executionStages;
+  let taskCount = 0;
+  for (const s of stages) taskCount += s.tasks.length;
+  return { stageCount: stages.length, taskCount };
+}
+
+/** Mirrors server line checks in `evaluateQuoteSendReadiness` for per-line hints (no new rules). */
+function lineLocalReadinessIssues(line: QuoteWorkspaceProps["quote"]["lineItems"][number]): string[] {
+  if (line.lineMode === QuoteLineMode.REMOVED) return [];
+  const issues: string[] = [];
+  if (!line.title.trim()) issues.push("Title");
+  const q = Number(line.quantity);
+  if (!Number.isFinite(q) || q <= 0) issues.push("Quantity");
+  if (line.lineMode === QuoteLineMode.REQUIRED && line.pricingMode === PricingMode.FIXED_PRICE) {
+    if (line.unitPriceCents == null || line.unitPriceCents <= 0) issues.push("Fixed unit price");
+  }
+  if (line.lineMode === QuoteLineMode.REQUIRED && !(line.customerDescription ?? "").trim()) {
+    issues.push("Customer description");
+  }
+  return issues;
+}
+
+function formatEnumLabel(v: string) {
+  return v.replace(/_/g, " ");
+}
+
 function ActionError({ state }: { state: QuoteActionResult | undefined }) {
   if (!state || state.ok) return null;
   return (
@@ -992,7 +1019,7 @@ function LineItemsSection({
           {!isSent ? lineItemChoiceRow : null}
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-0">
           {lines.map((l) => (
             <LineItemEditor
               key={l.id}
@@ -1106,18 +1133,22 @@ function LineItemExecutionPlanningReadOnly({ line }: { line: QuoteWorkspaceProps
   const stages = [...line.executionStages].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
   if (stages.length === 0) return null;
   return (
-    <div className="mt-3 border-t border-border dark:border-zinc-800/50 pt-3">
-      <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary dark:text-blue-400/70">Execution plan (frozen)</p>
-      <ul className="space-y-3">
+    <div className="mt-3 border-t border-border/70 pt-3 dark:border-zinc-800/50">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-primary/90 dark:text-blue-400/80">Execution plan (frozen)</p>
+      <ul className="space-y-2 border-l border-primary/20 pl-3 dark:border-blue-500/20">
         {stages.map((s) => {
           const tasks = [...s.tasks].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
           return (
-            <li key={s.id} className="rounded-[5px] border border-border bg-muted/60 p-2.5 dark:border-zinc-800/60 dark:bg-zinc-950/90">
+            <li key={s.id} className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-violet-700/85 dark:text-violet-400/90">Stage</p>
               <p className="text-xs font-medium text-foreground dark:text-zinc-200">{s.title}</p>
-              <ul className="mt-2 space-y-2">
+              <ul className="mt-1 space-y-1.5 border-l border-dashed border-border/70 pl-2.5 dark:border-zinc-700/45">
                 {tasks.map((t) => (
-                  <li key={t.id} className="border-l-2 border-primary/50 pl-2 dark:border-blue-500/35">
-                    <p className="text-xs text-foreground/90 dark:text-zinc-300">{t.title}</p>
+                  <li key={t.id} className="min-w-0">
+                    <p className="text-[11px] text-foreground/90 dark:text-zinc-300">
+                      <span className="text-muted-foreground dark:text-zinc-500">· </span>
+                      {t.title}
+                    </p>
                     <PlannedTaskEvidenceReadOnly dto={t.completionRequirement} />
                   </li>
                 ))}
@@ -1143,14 +1174,15 @@ function LineItemExecutionPlanning({
 }) {
   const stages = [...line.executionStages].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
   return (
-    <div className="mt-4 space-y-3 border-t border-border bg-muted/50 px-4 py-4 dark:border-zinc-800/50 dark:bg-zinc-950/80">
-      <h4 className="font-mono text-[10px] font-semibold uppercase tracking-wider text-primary dark:text-blue-400/80">Execution plan for this line</h4>
-      <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-zinc-500">
-        Stages sequence internal work; tasks under each stage are operational checklists—not pricing rows. Add a stage,
-        then add tasks. Customer-visible tasks need a label for the internal preview only.
-      </p>
+    <div className="mt-3 space-y-3 border-t border-border/70 pt-3 dark:border-zinc-800/50">
+      <div>
+        <h4 className="text-[10px] font-semibold uppercase tracking-wider text-primary dark:text-blue-400/85">Execution plan for this line</h4>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground dark:text-zinc-500">
+          Outline of delivery work — stages group tasks. Customer-visible tasks need a label for the internal preview only.
+        </p>
+      </div>
       {stages.length === 0 ? (
-        <div className="space-y-3 rounded-[5px] border border-dashed border-violet-500/25 bg-violet-500/[0.03] px-3 py-3 dark:border-violet-400/20 dark:bg-violet-950/10">
+        <div className="space-y-2 border-l border-dashed border-violet-500/30 py-1 pl-3 dark:border-violet-400/25">
           <p className="text-xs text-muted-foreground dark:text-zinc-500">
             No stages yet. Create a stage (for example Permit or Install), then add tasks under that stage.
           </p>
@@ -1162,7 +1194,7 @@ function LineItemExecutionPlanning({
           />
         </div>
       ) : (
-        <ul className="space-y-3 border-l-2 border-violet-500/20 pl-3 dark:border-violet-400/15">
+        <ul className="space-y-3 border-l border-primary/20 pl-3 dark:border-blue-500/20">
           {stages.map((s) => (
             <LineExecutionStageEditor
               key={s.id}
@@ -1176,12 +1208,14 @@ function LineItemExecutionPlanning({
         </ul>
       )}
       {stages.length > 0 ? (
-        <AddExecutionStageForm
-          quoteId={quoteId}
-          lineItemId={line.id}
-          workTemplates={workTemplates}
-          canManageWorkTemplates={canManageWorkTemplates}
-        />
+        <div className="border-l border-primary/20 pl-3 dark:border-blue-500/20">
+          <AddExecutionStageForm
+            quoteId={quoteId}
+            lineItemId={line.id}
+            workTemplates={workTemplates}
+            canManageWorkTemplates={canManageWorkTemplates}
+          />
+        </div>
       ) : null}
     </div>
   );
@@ -1239,7 +1273,7 @@ function AddExecutionStageForm({
   );
 
   return (
-    <div className="space-y-2 rounded-[5px] border border-dashed border-violet-500/25 bg-muted/30 p-3 dark:border-violet-400/20 dark:bg-zinc-950/60">
+    <div className="space-y-2">
       {!formOpen ? (
         choiceRow
       ) : (
@@ -1314,57 +1348,76 @@ function LineExecutionStageEditor({
 }) {
   const [st, act] = useActionState(updateQuoteLineExecutionStage, undefined);
   const [rmSt, rmAct] = useActionState(removeQuoteLineExecutionStage, undefined);
+  const [editOpen, setEditOpen] = useState(false);
+  useEffect(() => {
+    if (st?.ok) setEditOpen(false);
+  }, [st?.ok]);
   const tasks = [...stage.tasks].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
-  /** Empty stages start expanded so task creation is one click away; stages with work stay compact. */
-  const [expanded, setExpanded] = useState(tasks.length === 0);
   const requiredCount = tasks.filter((t) => t.isRequired).length;
   const visibleCount = tasks.filter((t) => t.customerVisible).length;
-  const notesPreview = clipText(stage.internalNotes, 48);
+  const notComplete = tasks.filter((t) => t.status !== QuoteTaskStatus.COMPLETE).length;
+  const notesPreview = clipText(stage.internalNotes, 56);
 
   return (
-    <li className="overflow-hidden rounded-[5px] border border-violet-500/20 bg-violet-500/[0.04] dark:border-violet-400/18 dark:bg-violet-950/25">
-      <div className="flex min-w-0 gap-2 border-l-[3px] border-l-violet-500/50 px-2 py-2.5 dark:border-l-violet-400/45 sm:px-3">
-        <button
-          type="button"
-          onClick={() => setExpanded((e) => !e)}
-          className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[4px] border border-violet-500/20 bg-background/80 text-violet-700 transition hover:bg-muted/80 dark:border-violet-400/25 dark:bg-zinc-950/80 dark:text-violet-300 dark:hover:bg-zinc-900/80"
-          aria-expanded={expanded}
-          aria-label={expanded ? "Collapse stage" : "Expand stage"}
-        >
-          {expanded ? <ChevronDown className="size-4" aria-hidden /> : <ChevronRight className="size-4" aria-hidden />}
-        </button>
+    <li className="min-w-0 list-none">
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 border-b border-border/35 pb-2 dark:border-zinc-800/40">
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-700/90 dark:text-violet-300/90">Stage</p>
-          <p className="truncate text-sm font-semibold text-foreground dark:text-zinc-100">{stage.title}</p>
+          <p className="min-w-0">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-400/95">Stage</span>
+            <span className="ml-1.5 text-sm font-medium text-foreground dark:text-zinc-100">{stage.title}</span>
+          </p>
           <p className="mt-0.5 text-[11px] text-muted-foreground dark:text-zinc-500">
             {tasks.length} task{tasks.length === 1 ? "" : "s"}
             {requiredCount ? ` · ${requiredCount} required` : ""}
             {visibleCount ? ` · ${visibleCount} customer-visible` : ""}
+            {tasks.length > 0 ? ` · ${notComplete} not complete` : ""}
             {notesPreview ? ` · ${notesPreview}` : ""}
           </p>
         </div>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 rounded-[5px] px-2 text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-400 dark:hover:text-zinc-200"
+            onClick={() => setEditOpen((v) => !v)}
+          >
+            {editOpen ? "Close" : "Edit stage"}
+          </Button>
+          <SaveWorkTemplateDialog
+            quoteId={quoteId}
+            saveKind="stage"
+            lineItemId={lineId}
+            stageId={stage.id}
+            defaultName={stage.title}
+            trigger={
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 rounded-[5px] px-2 text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
+              >
+                Save as template
+              </Button>
+            }
+          />
+          <form action={rmAct} className="inline">
+            <input type="hidden" name="quoteId" value={quoteId} />
+            <input type="hidden" name="stageId" value={stage.id} />
+            <Button
+              type="submit"
+              size="sm"
+              variant="ghost"
+              className="h-8 rounded-[5px] px-2 text-[11px] text-destructive hover:text-destructive dark:text-red-400/90 dark:hover:text-red-300"
+            >
+              Remove
+            </Button>
+          </form>
+        </div>
       </div>
-      {expanded ? (
-        <div className="space-y-3 border-t border-violet-500/15 bg-background/40 px-3 py-3 dark:border-violet-400/10 dark:bg-zinc-950/40">
-          <div className="flex flex-wrap justify-end gap-2">
-            <SaveWorkTemplateDialog
-              quoteId={quoteId}
-              saveKind="stage"
-              lineItemId={lineId}
-              stageId={stage.id}
-              defaultName={stage.title}
-              trigger={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 rounded-[5px] text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
-                >
-                  Save stage as template
-                </Button>
-              }
-            />
-          </div>
+      <ActionError state={rmSt} />
+      {editOpen ? (
+        <div className="mt-2 space-y-3 border-l border-border/50 py-1 pl-3 dark:border-zinc-700/50">
           <form action={act} className="grid gap-2 md:grid-cols-2">
             <input type="hidden" name="quoteId" value={quoteId} />
             <input type="hidden" name="lineItemId" value={lineId} />
@@ -1377,60 +1430,43 @@ function LineExecutionStageEditor({
               <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Stage internal notes</Label>
               <Textarea name="internalNotes" defaultValue={stage.internalNotes ?? ""} rows={2} className={quoteWorkbenchTextareaClass()} />
             </div>
-            <Button
-              type="submit"
-              size="sm"
-              className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80 md:col-span-2"
-            >
-              Save stage
-            </Button>
+            <div className="flex flex-wrap gap-2 md:col-span-2">
+              <Button
+                type="submit"
+                size="sm"
+                className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80"
+              >
+                Save stage
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 text-xs"
+                onClick={() => setEditOpen(false)}
+              >
+                Cancel
+              </Button>
+            </div>
             <ActionError state={st} />
           </form>
-          <form action={rmAct}>
-            <input type="hidden" name="quoteId" value={quoteId} />
-            <input type="hidden" name="stageId" value={stage.id} />
-            <Button
-              type="submit"
-              size="sm"
-              variant="outline"
-              className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 text-xs text-foreground/90 dark:text-zinc-300 hover:bg-muted/70 dark:hover:bg-zinc-900/60"
-            >
-              Remove stage
-            </Button>
-            <ActionError state={rmSt} />
-          </form>
-          <div className="space-y-3 border-t border-violet-500/15 pt-3 dark:border-violet-400/10">
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:text-zinc-500">
-              Tasks in this stage
-            </p>
-            {tasks.length === 0 ? (
-              <div className="space-y-2 rounded-[5px] border border-dashed border-border/80 bg-muted/20 px-2 py-3 dark:border-zinc-700/50 dark:bg-zinc-950/30">
-                <p className="text-xs text-muted-foreground dark:text-zinc-500">No tasks in this stage yet.</p>
-                <AddLineExecutionTaskForm
-                  quoteId={quoteId}
-                  stageId={stage.id}
-                  workTemplates={workTemplates}
-                  canManageWorkTemplates={canManageWorkTemplates}
-                />
-              </div>
-            ) : (
-              <>
-                <ul className="space-y-2 border-l-2 border-border/60 pl-2 dark:border-zinc-700/50">
-                  {tasks.map((t) => (
-                    <LineExecutionTaskEditor key={t.id} quoteId={quoteId} stageId={stage.id} task={t} />
-                  ))}
-                </ul>
-                <AddLineExecutionTaskForm
-                  quoteId={quoteId}
-                  stageId={stage.id}
-                  workTemplates={workTemplates}
-                  canManageWorkTemplates={canManageWorkTemplates}
-                />
-              </>
-            )}
-          </div>
         </div>
       ) : null}
+      <ul className="mt-2 space-y-2 border-l border-dashed border-border/55 pl-3 dark:border-zinc-700/45">
+        {tasks.length === 0 ? (
+          <li className="py-0.5 text-[11px] text-muted-foreground dark:text-zinc-500">No tasks in this stage yet.</li>
+        ) : (
+          tasks.map((t) => <LineExecutionTaskEditor key={t.id} quoteId={quoteId} stageId={stage.id} task={t} />)
+        )}
+      </ul>
+      <div className="mt-2 pl-3">
+        <AddLineExecutionTaskForm
+          quoteId={quoteId}
+          stageId={stage.id}
+          workTemplates={workTemplates}
+          canManageWorkTemplates={canManageWorkTemplates}
+        />
+      </div>
     </li>
   );
 }
@@ -1487,7 +1523,7 @@ function AddLineExecutionTaskForm({
   );
 
   return (
-    <div className="space-y-2 rounded-[5px] border border-dashed border-border/90 bg-muted/25 p-2.5 dark:border-zinc-700/45 dark:bg-zinc-950/50">
+    <div className="space-y-2 pt-1">
       {!formOpen ? (
         choiceRow
       ) : (
@@ -1562,58 +1598,57 @@ function LineExecutionTaskEditor({
   const [st, act] = useActionState(updateQuoteLineExecutionTask, undefined);
   const [stStatus, actStatus] = useActionState(updateQuoteLineExecutionTaskStatus, undefined);
   const [detailOpen, setDetailOpen] = useState(false);
+  useEffect(() => {
+    if (st?.ok || stStatus?.ok) setDetailOpen(false);
+  }, [st?.ok, stStatus?.ok]);
   const evidenceLabel = lineExecutionTaskEvidenceLabel(task.completionRequirement);
   const statusShort = task.status.replace(/_/g, " ");
 
   const badgeClass =
-    "inline-flex max-w-full items-center truncate rounded-[3px] border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide";
+    "inline-flex max-w-full items-center truncate rounded-[3px] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground dark:text-zinc-400";
 
   return (
-    <li className="min-w-0 overflow-hidden rounded-[4px] border border-zinc-300/40 bg-zinc-50/80 dark:border-zinc-700/60 dark:bg-zinc-950/80">
-      <div className="flex min-w-0 gap-1.5 p-2">
+    <li className="min-w-0 list-none border-b border-border/25 pb-2 last:border-b-0 dark:border-zinc-800/30">
+      <div className="flex min-w-0 items-start gap-2">
         <button
           type="button"
           onClick={() => setDetailOpen((o) => !o)}
-          className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-[4px] border border-border/80 bg-background text-muted-foreground transition hover:bg-muted/80 dark:border-zinc-700/80 dark:bg-zinc-900/80 dark:text-zinc-400 dark:hover:bg-zinc-800/80"
+          className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-[4px] text-muted-foreground transition hover:bg-muted/60 hover:text-foreground dark:text-zinc-500 dark:hover:bg-zinc-900/60 dark:hover:text-zinc-300"
           aria-expanded={detailOpen}
           aria-label={detailOpen ? "Collapse task details" : "Expand task details"}
         >
           {detailOpen ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
         </button>
         <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground dark:text-zinc-500">Task</p>
           <p className="truncate text-xs font-medium text-foreground dark:text-zinc-200">{task.title}</p>
-          <div className="mt-1 flex min-w-0 flex-wrap gap-1">
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
             {task.isRequired ? (
-              <span className={`${badgeClass} border-amber-500/35 bg-amber-500/10 text-amber-900 dark:border-amber-500/25 dark:bg-amber-950/30 dark:text-amber-200/90`}>
-                Required
-              </span>
+              <span className={badgeClass}>Required</span>
             ) : (
-              <span className={`${badgeClass} border-border/60 bg-muted/50 text-muted-foreground dark:border-zinc-700/60 dark:bg-zinc-900/50 dark:text-zinc-500`}>
-                Optional
-              </span>
+              <span className={badgeClass}>Optional</span>
             )}
-            {task.customerVisible ? (
-              <span className={`${badgeClass} border-sky-500/35 bg-sky-500/10 text-sky-900 dark:border-sky-500/25 dark:bg-sky-950/40 dark:text-sky-200/90`}>
-                Customer-visible
-              </span>
-            ) : null}
+            {task.customerVisible ? <span className={badgeClass}>Customer-visible</span> : null}
             {task.completionRequirement.state === "invalid" ? (
-              <span className={`${badgeClass} border-amber-600/40 bg-amber-500/15 text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/25 dark:text-amber-200/90`}>
-                Evidence invalid
-              </span>
+              <span className={`${badgeClass} text-amber-800 dark:text-amber-400/90`}>Evidence invalid</span>
             ) : evidenceLabel ? (
-              <span className={`${badgeClass} border-emerald-600/30 bg-emerald-500/10 text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-950/30 dark:text-emerald-200/85`}>
-                {evidenceLabel}
-              </span>
+              <span className={`${badgeClass} text-emerald-800 dark:text-emerald-400/85`}>{evidenceLabel}</span>
             ) : null}
-            <span className={`${badgeClass} border-border/50 bg-background/80 font-mono text-[10px] normal-case text-muted-foreground dark:border-zinc-700/50 dark:bg-zinc-900/60 dark:text-zinc-500`}>
-              {statusShort}
-            </span>
+            <span className={`${badgeClass} font-mono normal-case`}>{statusShort}</span>
           </div>
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 shrink-0 px-2 text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
+          onClick={() => setDetailOpen((o) => !o)}
+        >
+          {detailOpen ? "Close" : "Edit"}
+        </Button>
       </div>
       {detailOpen ? (
-        <div className="space-y-3 border-t border-border/70 bg-muted/20 px-2 py-3 dark:border-zinc-800/60 dark:bg-zinc-950/50">
+        <div className="mt-2 space-y-3 border-l border-border/50 py-1 pl-3 dark:border-zinc-700/45">
           <div className="flex flex-wrap justify-end">
             <SaveWorkTemplateDialog
               quoteId={quoteId}
@@ -1628,7 +1663,7 @@ function LineExecutionTaskEditor({
                   size="sm"
                   className="h-8 rounded-[5px] text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
                 >
-                  Save task as template
+                  Save as template
                 </Button>
               }
             />
@@ -1662,16 +1697,27 @@ function LineExecutionTaskEditor({
               <Textarea name="internalNotes" defaultValue={task.internalNotes ?? ""} rows={2} className={quoteWorkbenchTextareaClass()} />
             </div>
             <PlannedTaskEvidenceRequirementFields completionRequirement={task.completionRequirement} />
-            <Button
-              type="submit"
-              size="sm"
-              className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80 md:col-span-2"
-            >
-              Save task
-            </Button>
+            <div className="flex flex-wrap gap-2 md:col-span-2">
+              <Button
+                type="submit"
+                size="sm"
+                className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80"
+              >
+                Save task
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 text-xs"
+                onClick={() => setDetailOpen(false)}
+              >
+                Cancel
+              </Button>
+            </div>
             <ActionError state={st} />
           </form>
-          <form action={actStatus} className="flex flex-wrap items-end gap-2 border-t border-border/60 pt-3 dark:border-zinc-800/50">
+          <form action={actStatus} className="flex flex-wrap items-end gap-2 border-t border-border/40 pt-2 dark:border-zinc-800/40">
             <input type="hidden" name="quoteId" value={quoteId} />
             <input type="hidden" name="taskId" value={task.id} />
             <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Status</Label>
@@ -1697,6 +1743,55 @@ function LineExecutionTaskEditor({
   );
 }
 
+function LineItemCommercialSummaryBody({
+  line,
+  variant,
+}: {
+  line: QuoteWorkspaceProps["quote"]["lineItems"][number];
+  variant: "live" | "frozen";
+}) {
+  const { stageCount, taskCount } = countLineExecutionStats(line);
+  const issues = lineLocalReadinessIssues(line);
+  const descPreview = clipText(line.customerDescription, 96);
+  const pricingBits: string[] = [
+    `Qty ${line.quantity}`,
+    formatEnumLabel(line.pricingMode),
+    formatEnumLabel(line.lineMode),
+    `${stageCount} stage${stageCount === 1 ? "" : "s"}`,
+    `${taskCount} task${taskCount === 1 ? "" : "s"}`,
+  ];
+  if (line.pricingMode === PricingMode.FIXED_PRICE && line.unitPriceCents != null) {
+    pricingBits.splice(2, 0, `Unit ${fmtMoney(line.unitPriceCents)}`);
+  }
+  return (
+    <div className="min-w-0 flex-1 space-y-1">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-primary dark:text-blue-400/90">
+        {variant === "frozen" ? "Commercial · frozen" : "Commercial line"}
+      </p>
+      <p className="text-base font-semibold tracking-tight text-foreground dark:text-white">{line.title}</p>
+      <p className="text-[11px] leading-snug text-muted-foreground dark:text-zinc-500">{pricingBits.join(" · ")}</p>
+      <p className="font-mono text-xs font-semibold tabular-nums text-primary dark:text-blue-300/90">Line total {fmtMoney(line.lineTotalCents)}</p>
+      {descPreview ? (
+        <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-zinc-500">
+          <span className="font-medium text-foreground/80 dark:text-zinc-400">Customer: </span>
+          {descPreview}
+        </p>
+      ) : null}
+      {line.sourceTemplateName ? (
+        <p className="text-[11px] text-muted-foreground dark:text-zinc-500">
+          Template <span className="text-foreground/90 dark:text-zinc-300">{line.sourceTemplateName}</span>
+          {line.sourceTemplateVersion != null ? ` v${line.sourceTemplateVersion}` : null}
+        </p>
+      ) : null}
+      {issues.length > 0 ? (
+        <p className="text-[11px] font-medium text-amber-800 dark:text-amber-400/90" role="status">
+          Send checks: {issues.join(", ")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function LineItemEditor({
   quoteId,
   line,
@@ -1712,144 +1807,164 @@ function LineItemEditor({
 }) {
   const [st, action] = useActionState(updateQuoteLineItem, undefined);
   const [rmSt, rmAction] = useActionState(markQuoteLineRemoved, undefined);
+  const [lineEditOpen, setLineEditOpen] = useState(false);
+  useEffect(() => {
+    if (st?.ok) setLineEditOpen(false);
+  }, [st?.ok]);
+
   if (isSent) {
     return (
-      <div className="overflow-hidden rounded-[6px] border border-border bg-card text-card-foreground ring-1 ring-inset ring-border/60 dark:border-zinc-800/70 dark:bg-zinc-950 dark:ring-white/10">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border dark:border-zinc-800/50 px-4 py-3">
-          <div className="min-w-0">
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-primary dark:text-blue-400/90">Commercial · frozen</p>
-            <p className="mt-1 text-sm font-semibold text-foreground dark:text-white">{line.title}</p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground dark:text-zinc-500">{line.lineMode}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground dark:text-zinc-600">Line total</p>
-            <p className="font-mono text-sm font-semibold text-primary dark:text-blue-200/90">{fmtMoney(line.lineTotalCents)}</p>
-          </div>
+      <div className="min-w-0 border-b border-border/50 pb-5 last:border-b-0 dark:border-zinc-800/45">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <LineItemCommercialSummaryBody line={line} variant="frozen" />
         </div>
-        <div className="px-4 py-3">
-          {line.lineMode !== QuoteLineMode.REMOVED ? <LineItemExecutionPlanningReadOnly line={line} /> : null}
-        </div>
+        {line.lineMode !== QuoteLineMode.REMOVED ? (
+          <div className="mt-3 pl-1">
+            <LineItemExecutionPlanningReadOnly line={line} />
+          </div>
+        ) : (
+          <p className="mt-2 text-[11px] text-muted-foreground dark:text-zinc-500">Line marked removed.</p>
+        )}
       </div>
     );
   }
+
   return (
-    <div className="overflow-hidden rounded-[6px] border border-border bg-card text-card-foreground ring-1 ring-inset ring-border/60 dark:border-zinc-800/70 dark:bg-zinc-950 dark:ring-white/10">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border dark:border-zinc-800/50 px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-primary dark:text-blue-400/90">Commercial line</p>
-          <p className="mt-1 truncate text-sm font-semibold text-foreground dark:text-white" title={line.title}>
-            {line.title}
-          </p>
-          {line.sourceTemplateName ? (
-            <p className="mt-2 text-[11px] text-muted-foreground dark:text-zinc-500">
-              Template: <span className="text-foreground/90 dark:text-zinc-300">{line.sourceTemplateName}</span>
-              {line.sourceTemplateVersion != null ? ` v${line.sourceTemplateVersion}` : null}
-            </p>
-          ) : null}
-        </div>
+    <div className="min-w-0 border-b border-border/50 pb-5 last:border-b-0 dark:border-zinc-800/45">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <LineItemCommercialSummaryBody line={line} variant="live" />
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <SaveWorkTemplateDialog
-            quoteId={quoteId}
-            saveKind="line"
-            lineItemId={line.id}
-            defaultName={line.title}
-            trigger={
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
-              >
-                Save as template
-              </Button>
-            }
-          />
-          <div className="text-right">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground dark:text-zinc-600">Line total</p>
-            <p className="font-mono text-sm font-semibold text-primary dark:text-blue-200/90">{fmtMoney(line.lineTotalCents)}</p>
+          <div className="flex flex-wrap justify-end gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-[5px] px-2 text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-400 dark:hover:text-zinc-200"
+              onClick={() => setLineEditOpen((v) => !v)}
+            >
+              {lineEditOpen ? "Close" : "Edit line"}
+            </Button>
+            <SaveWorkTemplateDialog
+              quoteId={quoteId}
+              saveKind="line"
+              lineItemId={line.id}
+              defaultName={line.title}
+              trigger={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 rounded-[5px] px-2 text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
+                >
+                  Save as template
+                </Button>
+              }
+            />
+            {line.lineMode !== QuoteLineMode.REMOVED ? (
+              <form action={rmAction} className="inline">
+                <input type="hidden" name="quoteId" value={quoteId} />
+                <input type="hidden" name="lineItemId" value={line.id} />
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 rounded-[5px] px-2 text-[11px] text-destructive hover:text-destructive dark:text-red-400/90 dark:hover:text-red-300"
+                >
+                  Mark removed
+                </Button>
+              </form>
+            ) : null}
           </div>
         </div>
       </div>
-      <form action={action} className="grid gap-3 border-t border-border bg-muted/20 px-4 py-4 dark:border-zinc-800/40 dark:bg-zinc-950/40 md:grid-cols-2">
-        <input type="hidden" name="quoteId" value={quoteId} />
-        <input type="hidden" name="lineItemId" value={line.id} />
-        <div className="space-y-1.5 md:col-span-2">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Title</Label>
-          <Input name="title" defaultValue={line.title} required className={quoteWorkbenchInputClass()} />
-        </div>
-        <div className="space-y-1.5 md:col-span-2">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Customer description</Label>
-          <Textarea
-            name="customerDescription"
-            defaultValue={line.customerDescription}
-            required
-            rows={2}
-            className={quoteWorkbenchTextareaClass()}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Qty</Label>
-          <Input name="quantity" defaultValue={line.quantity} required className={quoteWorkbenchInputClass()} />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Unit (¢)</Label>
-          <Input
-            name="unitPriceCents"
-            type="number"
-            min={0}
-            defaultValue={line.unitPriceCents ?? ""}
-            className={quoteWorkbenchInputClass()}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Pricing</Label>
-          <select name="pricingMode" defaultValue={line.pricingMode} className={quoteWorkbenchSelectClass() + " w-full"}>
-            {Object.values(PricingMode).map((m) => (
-              <option key={m} value={m}>
-                {m.replace(/_/g, " ")}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Line mode</Label>
-          <select name="lineMode" defaultValue={line.lineMode} className={quoteWorkbenchSelectClass() + " w-full"}>
-            {Object.values(QuoteLineMode).map((m) => (
-              <option key={m} value={m}>
-                {m.replace(/_/g, " ")}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1.5 md:col-span-2">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Internal notes</Label>
-          <Textarea name="internalNotes" defaultValue={line.internalNotes ?? ""} rows={2} className={quoteWorkbenchTextareaClass()} />
-        </div>
-        <div className="flex flex-wrap gap-2 md:col-span-2">
-          <Button type="submit" size="sm" className="h-8 rounded-[5px] bg-primary text-xs text-primary-foreground hover:bg-primary/90">
-            Save line
-          </Button>
-        </div>
-        <ActionError state={st} />
-      </form>
-      {line.lineMode !== QuoteLineMode.REMOVED ? (
-        <LineItemExecutionPlanning
-          quoteId={quoteId}
-          line={line}
-          workTemplates={workTemplates}
-          canManageWorkTemplates={canManageWorkTemplates}
-        />
-      ) : null}
-      {line.lineMode !== QuoteLineMode.REMOVED ? (
-        <form action={rmAction} className="border-t border-border dark:border-zinc-800/50 px-4 py-3">
-          <input type="hidden" name="quoteId" value={quoteId} />
-          <input type="hidden" name="lineItemId" value={line.id} />
-          <Button type="submit" size="sm" variant="outline" className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 text-xs text-muted-foreground dark:text-zinc-400 hover:bg-muted/70 dark:hover:bg-zinc-900/60">
-            Mark removed
-          </Button>
-        </form>
-      ) : null}
       <ActionError state={rmSt} />
+      {lineEditOpen ? (
+        <div className="mt-3 space-y-3 border-l border-primary/25 py-1 pl-3 dark:border-blue-500/25">
+          <form action={action} className="grid gap-3 md:grid-cols-2">
+            <input type="hidden" name="quoteId" value={quoteId} />
+            <input type="hidden" name="lineItemId" value={line.id} />
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Title</Label>
+              <Input name="title" defaultValue={line.title} required className={quoteWorkbenchInputClass()} />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Customer description</Label>
+              <Textarea
+                name="customerDescription"
+                defaultValue={line.customerDescription}
+                required
+                rows={2}
+                className={quoteWorkbenchTextareaClass()}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Qty</Label>
+              <Input name="quantity" defaultValue={line.quantity} required className={quoteWorkbenchInputClass()} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Unit (¢)</Label>
+              <Input
+                name="unitPriceCents"
+                type="number"
+                min={0}
+                defaultValue={line.unitPriceCents ?? ""}
+                className={quoteWorkbenchInputClass()}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Pricing</Label>
+              <select name="pricingMode" defaultValue={line.pricingMode} className={quoteWorkbenchSelectClass() + " w-full"}>
+                {Object.values(PricingMode).map((m) => (
+                  <option key={m} value={m}>
+                    {m.replace(/_/g, " ")}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Line mode</Label>
+              <select name="lineMode" defaultValue={line.lineMode} className={quoteWorkbenchSelectClass() + " w-full"}>
+                {Object.values(QuoteLineMode).map((m) => (
+                  <option key={m} value={m}>
+                    {m.replace(/_/g, " ")}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Internal notes</Label>
+              <Textarea name="internalNotes" defaultValue={line.internalNotes ?? ""} rows={2} className={quoteWorkbenchTextareaClass()} />
+            </div>
+            <div className="flex flex-wrap gap-2 md:col-span-2">
+              <Button type="submit" size="sm" className="h-8 rounded-[5px] bg-primary text-xs text-primary-foreground hover:bg-primary/90">
+                Save line
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 text-xs"
+                onClick={() => setLineEditOpen(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+            <ActionError state={st} />
+          </form>
+        </div>
+      ) : null}
+      {line.lineMode !== QuoteLineMode.REMOVED ? (
+        <div className="mt-1 pl-0.5">
+          <LineItemExecutionPlanning
+            quoteId={quoteId}
+            line={line}
+            workTemplates={workTemplates}
+            canManageWorkTemplates={canManageWorkTemplates}
+          />
+        </div>
+      ) : (
+        <p className="mt-2 text-[11px] text-muted-foreground dark:text-zinc-500">Line marked removed — execution hidden.</p>
+      )}
     </div>
   );
 }
