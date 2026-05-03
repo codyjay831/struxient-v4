@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { startTransition, useActionState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   CustomerContactType,
@@ -15,6 +15,7 @@ import {
 import type { QuoteSendReadinessItem } from "@/server/phase2/quote-readiness";
 import type { QuoteCustomerPreviewDTO, QuotePreviewWorkspaceResolution } from "@/server/phase2/customer-preview";
 import type { CompletionRequirementDto } from "@/server/phase13/completion-requirements";
+import type { QuoteActionResult } from "@/server/phase2/quote-mutations";
 import {
   addQuoteAssumption,
   addQuoteLineExecutionStage,
@@ -29,7 +30,6 @@ import {
   markQuoteSent,
   removeQuoteAssumption,
   removeQuoteLineExecutionStage,
-  type QuoteActionResult,
   updateQuote,
   updateQuoteAssumption,
   updateQuoteLineExecutionStage,
@@ -166,7 +166,9 @@ function PreviewLogger({ quoteId }: { quoteId: string }) {
     ran.current = true;
     const fd = new FormData();
     fd.set("quoteId", quoteId);
-    void action(fd);
+    startTransition(() => {
+      void action(fd);
+    });
   }, [action, quoteId]);
   return <ActionError state={state} />;
 }

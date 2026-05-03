@@ -25,8 +25,8 @@ import {
   quoteMutationUpdateTask,
   quoteMutationUpdateTaskStatus,
   zodActionFailure,
-  type QuoteActionResult,
 } from "@/server/phase2/quote-mutations";
+import type { QuoteActionResult } from "@/server/phase2/quote-mutations";
 import {
   quoteMutationArchiveQuoteWorkTemplate,
   quoteMutationInsertLineItemTemplateIntoQuote,
@@ -48,9 +48,6 @@ import {
 } from "@/server/phase8/portal-token-mutations";
 import { portalQuoteIdFormSchema } from "@/server/phase8/validation";
 import { createQuoteDraftFromOpportunitySchema } from "@/server/phase2/validation";
-
-export type { QuoteActionResult };
-export type PortalLinkActionResult = PortalTokenMutationResult;
 
 export async function createQuoteDraftFromOpportunity(
   _prev: QuoteActionResult | undefined,
@@ -370,9 +367,9 @@ export async function insertTaskTemplateIntoStage(
 }
 
 export async function createCustomerPortalLink(
-  _prev: PortalLinkActionResult | undefined,
+  _prev: PortalTokenMutationResult | undefined,
   formData: FormData,
-): Promise<PortalLinkActionResult> {
+): Promise<PortalTokenMutationResult> {
   const ctx = await requireOrgSession();
   const parsed = portalQuoteIdFormSchema.safeParse({ quoteId: formData.get("quoteId") });
   if (!parsed.success) {
@@ -387,9 +384,9 @@ export async function createCustomerPortalLink(
 }
 
 export async function revokeCustomerPortalLink(
-  _prev: PortalLinkActionResult | undefined,
+  _prev: PortalTokenMutationResult | undefined,
   formData: FormData,
-): Promise<PortalLinkActionResult> {
+): Promise<PortalTokenMutationResult> {
   const ctx = await requireOrgSession();
   const parsed = portalQuoteIdFormSchema.safeParse({ quoteId: formData.get("quoteId") });
   if (!parsed.success) {
@@ -404,9 +401,9 @@ export async function revokeCustomerPortalLink(
 }
 
 export async function regenerateCustomerPortalLink(
-  _prev: PortalLinkActionResult | undefined,
+  _prev: PortalTokenMutationResult | undefined,
   formData: FormData,
-): Promise<PortalLinkActionResult> {
+): Promise<PortalTokenMutationResult> {
   const ctx = await requireOrgSession();
   const parsed = portalQuoteIdFormSchema.safeParse({ quoteId: formData.get("quoteId") });
   if (!parsed.success) {
