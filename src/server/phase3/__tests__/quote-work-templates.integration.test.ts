@@ -21,12 +21,19 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { OrgSessionContext } from "@/server/phase1/org-session";
-import { buildQuoteCustomerPreviewDTO, parseValidatedSentQuoteSnapshot } from "@/server/phase2/customer-preview";
+import {
+  buildQuoteCustomerPreviewDTO,
+  parseSentSnapshotPreviewDto,
+  parseValidatedSentQuoteSnapshot,
+} from "@/server/phase2/customer-preview";
 import { evaluateQuoteSendReadiness, allQuoteSendBlockersPass } from "@/server/phase2/quote-readiness";
 import {
+  quoteMutationAddLineExecutionTask,
   quoteMutationAddLineItem,
   quoteMutationCreateDraftFromOpportunity,
+  quoteMutationMarkReadyToSend,
   quoteMutationMarkSent,
+  quoteMutationUpdateLineExecutionTask,
 } from "@/server/phase2/quote-mutations";
 import { getQuoteWorkspace } from "@/server/phase2/quote-queries";
 import {
@@ -46,7 +53,11 @@ import {
   listQuoteWorkTemplatesForLibrary,
   resolveQuoteWorkTemplateLibraryDetail,
 } from "@/server/phase3/template-queries";
-import { TEMPLATE_PAYLOAD_VERSION, validatePayloadForKind } from "@/server/phase3/template-payloads";
+import { parseTaskOnlyPayload, TEMPLATE_PAYLOAD_VERSION, validatePayloadForKind } from "@/server/phase3/template-payloads";
+import {
+  quoteMutationActivateAcceptedQuoteAsJob,
+  quoteMutationMarkAccepted,
+} from "@/server/phase4/quote-accept-activate";
 
 config({ path: ".env" });
 
@@ -727,5 +738,359 @@ describe("Phase 3A quote work templates (integration)", () => {
     if (!r.ok) expect(r.reason).toBe("not_found");
 
     await prisma.quote.delete({ where: { id: quoteId } });
+  });
+
+  describe("Phase 15: template completionRequirementsJson pass-through", () => {
+    const canonicalReq = {
+      version: 1 as const,
+      evidence: { required: true, minAcceptedCount: 2, allowJobLevelEvidence: true },
+    };
+
+    it("legacy TASK template without completionRequirementsJson still applies with null quote row JSON", async () => {
+      const quoteId = await createReadyDraftQuote();
+      const line = await prisma.quoteLineItem.findFirstOrThrow({ where: { quoteId } });
+      const stage = await prisma.quoteLineExecutionStage.findFirstOrThrow({ where: { quoteLineItemId: line.id } });
+      const legacy = await prisma.quoteWorkTemplate.create({
+        data: {
+          organizationId: orgAId,
+          kind: QuoteWorkTemplateKind.TASK,
+          name: `Legacy task tmpl ${suffix}`,
+          payloadVersion: TEMPLATE_PAYLOAD_VERSION,
+          contentVersion: 1,
+          payloadJson: { task: { title: "Legacy only", isRequired: false, customerVisible: false } },
+          createdById: userSalesAId,
+        },
+      });
+      const beforeCount = await prisma.quoteLineExecutionTask.count({
+        where: { organizationId: orgAId, stageId: stage.id },
+      });
+      const ins = await quoteMutationInsertTaskTemplateIntoStage(
+        salesCtxA,
+        fd({ quoteId, stageId: stage.id, templateId: legacy.id }),
+      );
+      expect(ins.ok).toBe(true);
+      expect(await prisma.quoteLineExecutionTask.count({ where: { organizationId: orgAId, stageId: stage.id } })).toBe(
+        beforeCount + 1,
+      );
+      const inserted = await prisma.quoteLineExecutionTask.findFirstOrThrow({
+        where: { organizationId: orgAId, stageId: stage.id, title: "Legacy only" },
+      });
+      expect(inserted.completionRequirementsJson).toBeNull();
+      await prisma.quoteWorkTemplate.delete({ where: { id: legacy.id } });
+      await prisma.quote.delete({ where: { id: quoteId } });
+    });
+
+    it("save task template preserves canonical completionRequirementsJson; apply copies to quote row", async () => {
+      const quoteId = await createReadyDraftQuote();
+      const line = await prisma.quoteLineItem.findFirstOrThrow({ where: { quoteId } });
+      const stage = await prisma.quoteLineExecutionStage.findFirstOrThrow({ where: { quoteLineItemId: line.id } });
+      const add = await quoteMutationAddLineExecutionTask(
+        salesCtxA,
+        fd({
+          quoteId,
+          stageId: stage.id,
+          title: "Gated work unit",
+          evidenceRequired: "true",
+          minAcceptedEvidenceCount: "2",
+          allowJobLevelEvidence: "true",
+        }),
+      );
+      expect(add.ok).toBe(true);
+      const gated = await prisma.quoteLineExecutionTask.findFirstOrThrow({
+        where: { organizationId: orgAId, stageId: stage.id, title: "Gated work unit" },
+      });
+      expect(gated.completionRequirementsJson).toEqual(canonicalReq);
+
+      const saveT = await quoteMutationSaveExecutionTaskAsTemplate(
+        salesCtxA,
+        fd({
+          quoteId,
+          stageId: stage.id,
+          taskId: gated.id,
+          name: `Gated task tmpl ${suffix}`,
+        }),
+      );
+      expect(saveT.ok).toBe(true);
+      const tmpl = await prisma.quoteWorkTemplate.findFirstOrThrow({
+        where: { organizationId: orgAId, name: `Gated task tmpl ${suffix}` },
+      });
+      const parsed = parseTaskOnlyPayload(tmpl.payloadJson);
+      expect(parsed.task.completionRequirementsJson).toEqual(canonicalReq);
+
+      const stage2 = await prisma.quoteLineExecutionStage.create({
+        data: { organizationId: orgAId, quoteLineItemId: line.id, title: "Insert target stage", sortOrder: 99 },
+      });
+      const ins = await quoteMutationInsertTaskTemplateIntoStage(
+        salesCtxA,
+        fd({ quoteId, stageId: stage2.id, templateId: tmpl.id }),
+      );
+      expect(ins.ok).toBe(true);
+      const applied = await prisma.quoteLineExecutionTask.findFirstOrThrow({
+        where: { organizationId: orgAId, stageId: stage2.id, title: "Gated work unit" },
+      });
+      expect(applied.completionRequirementsJson).toEqual(canonicalReq);
+
+      await prisma.quoteWorkTemplate.delete({ where: { id: tmpl.id } });
+      await prisma.quote.delete({ where: { id: quoteId } });
+    });
+
+    it("save-as-template fails closed when quote task has invalid completionRequirementsJson in DB", async () => {
+      const quoteId = await createReadyDraftQuote();
+      const line = await prisma.quoteLineItem.findFirstOrThrow({ where: { quoteId } });
+      const stage = await prisma.quoteLineExecutionStage.findFirstOrThrow({ where: { quoteLineItemId: line.id } });
+      const task = await prisma.quoteLineExecutionTask.findFirstOrThrow({ where: { stageId: stage.id } });
+      await prisma.quoteLineExecutionTask.update({
+        where: { id: task.id },
+        data: {
+          completionRequirementsJson: { version: 99, evidence: { required: true, minAcceptedCount: 1 } },
+        },
+      });
+      const r = await quoteMutationSaveExecutionTaskAsTemplate(
+        salesCtxA,
+        fd({
+          quoteId,
+          stageId: stage.id,
+          taskId: task.id,
+          name: `Should fail save ${suffix}`,
+        }),
+      );
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/invalid completion requirements/i);
+      await prisma.quote.delete({ where: { id: quoteId } });
+    });
+
+    it("insert task template fails closed when payload completionRequirementsJson is invalid", async () => {
+      const quoteId = await createReadyDraftQuote();
+      const line = await prisma.quoteLineItem.findFirstOrThrow({ where: { quoteId } });
+      const stage = await prisma.quoteLineExecutionStage.findFirstOrThrow({ where: { quoteLineItemId: line.id } });
+      const bad = await prisma.quoteWorkTemplate.create({
+        data: {
+          organizationId: orgAId,
+          kind: QuoteWorkTemplateKind.TASK,
+          name: `Bad gate tmpl ${suffix}`,
+          payloadVersion: TEMPLATE_PAYLOAD_VERSION,
+          contentVersion: 1,
+          payloadJson: {
+            task: {
+              title: "Bad",
+              isRequired: false,
+              completionRequirementsJson: { version: 99, evidence: { required: true, minAcceptedCount: 1 } },
+            },
+          },
+          createdById: userSalesAId,
+        },
+      });
+      const before = await prisma.quoteLineExecutionTask.count({ where: { stageId: stage.id, organizationId: orgAId } });
+      const ins = await quoteMutationInsertTaskTemplateIntoStage(
+        salesCtxA,
+        fd({ quoteId, stageId: stage.id, templateId: bad.id }),
+      );
+      expect(ins.ok).toBe(false);
+      expect(
+        await prisma.quoteLineExecutionTask.count({ where: { stageId: stage.id, organizationId: orgAId } }),
+      ).toBe(before);
+      await prisma.quoteWorkTemplate.delete({ where: { id: bad.id } });
+      await prisma.quote.delete({ where: { id: quoteId } });
+    });
+
+    it("line template save/apply carries nested task completionRequirementsJson", async () => {
+      const quoteId = await createReadyDraftQuote();
+      const line = await prisma.quoteLineItem.findFirstOrThrow({ where: { quoteId } });
+      const stage = await prisma.quoteLineExecutionStage.findFirstOrThrow({ where: { quoteLineItemId: line.id } });
+      await quoteMutationAddLineExecutionTask(
+        salesCtxA,
+        fd({
+          quoteId,
+          stageId: stage.id,
+          title: "Nested gate",
+          evidenceRequired: "true",
+          minAcceptedEvidenceCount: "1",
+        }),
+      );
+      await quoteMutationSaveLineItemAsTemplate(
+        salesCtxA,
+        fd({ quoteId, lineItemId: line.id, name: `Line with gate ${suffix}` }),
+      );
+      const tmpl = await prisma.quoteWorkTemplate.findFirstOrThrow({
+        where: { organizationId: orgAId, name: `Line with gate ${suffix}` },
+      });
+      const payload = validatePayloadForKind(QuoteWorkTemplateKind.LINE_ITEM_WITH_PLAN, tmpl.payloadJson);
+      const nested = payload.stages.flatMap((s) => s.tasks).find((t) => t.title === "Nested gate");
+      expect(nested?.completionRequirementsJson).toEqual({
+        version: 1,
+        evidence: { required: true, minAcceptedCount: 1, allowJobLevelEvidence: false },
+      });
+
+      const ins = await quoteMutationInsertLineItemTemplateIntoQuote(
+        salesCtxA,
+        fd({ quoteId, templateId: tmpl.id }),
+      );
+      expect(ins.ok).toBe(true);
+      const lines = await prisma.quoteLineItem.findMany({ where: { quoteId }, orderBy: { sortOrder: "asc" } });
+      const insertedLine = lines.find((l) => l.sourceTemplateId === tmpl.id);
+      expect(insertedLine).toBeTruthy();
+      const insertedTask = await prisma.quoteLineExecutionTask.findFirst({
+        where: {
+          organizationId: orgAId,
+          title: "Nested gate",
+          stage: { quoteLineItemId: insertedLine!.id },
+        },
+      });
+      expect(insertedTask?.completionRequirementsJson).toEqual({
+        version: 1,
+        evidence: { required: true, minAcceptedCount: 1, allowJobLevelEvidence: false },
+      });
+
+      await prisma.quoteWorkTemplate.delete({ where: { id: tmpl.id } });
+      await prisma.quote.delete({ where: { id: quoteId } });
+    });
+
+    it("editing quote task requirements after template apply does not mutate source template payload", async () => {
+      const quoteId = await createReadyDraftQuote();
+      const line = await prisma.quoteLineItem.findFirstOrThrow({ where: { quoteId } });
+      const stage = await prisma.quoteLineExecutionStage.findFirstOrThrow({ where: { quoteLineItemId: line.id } });
+      const add = await quoteMutationAddLineExecutionTask(
+        salesCtxA,
+        fd({
+          quoteId,
+          stageId: stage.id,
+          title: "Source gated",
+          evidenceRequired: "true",
+          minAcceptedEvidenceCount: "2",
+          allowJobLevelEvidence: "true",
+        }),
+      );
+      expect(add.ok).toBe(true);
+      const sourceTask = await prisma.quoteLineExecutionTask.findFirstOrThrow({
+        where: { stageId: stage.id, title: "Source gated" },
+      });
+      await quoteMutationSaveExecutionTaskAsTemplate(
+        salesCtxA,
+        fd({
+          quoteId,
+          stageId: stage.id,
+          taskId: sourceTask.id,
+          name: `No live mut ${suffix}`,
+        }),
+      );
+      const tmpl = await prisma.quoteWorkTemplate.findFirstOrThrow({
+        where: { organizationId: orgAId, name: `No live mut ${suffix}` },
+      });
+      const payloadJsonBefore = JSON.stringify(tmpl.payloadJson);
+
+      const stage2 = await prisma.quoteLineExecutionStage.create({
+        data: { organizationId: orgAId, quoteLineItemId: line.id, title: "Apply here", sortOrder: 98 },
+      });
+      const ins = await quoteMutationInsertTaskTemplateIntoStage(
+        salesCtxA,
+        fd({ quoteId, stageId: stage2.id, templateId: tmpl.id }),
+      );
+      expect(ins.ok).toBe(true);
+      const appliedTask = await prisma.quoteLineExecutionTask.findFirstOrThrow({
+        where: { stageId: stage2.id, title: "Source gated" },
+      });
+      const upd = await quoteMutationUpdateLineExecutionTask(
+        salesCtxA,
+        fd({
+          quoteId,
+          stageId: stage2.id,
+          taskId: appliedTask.id,
+          title: "Source gated",
+          description: "",
+          isRequired: "true",
+          assignedRole: "",
+          customerVisible: undefined,
+          customerLabel: "",
+          internalNotes: "",
+          evidenceRequired: "true",
+          minAcceptedEvidenceCount: "3",
+          allowJobLevelEvidence: "true",
+        }),
+      );
+      expect(upd.ok).toBe(true);
+
+      const tmplReload = await prisma.quoteWorkTemplate.findUniqueOrThrow({ where: { id: tmpl.id } });
+      expect(JSON.stringify(tmplReload.payloadJson)).toBe(payloadJsonBefore);
+
+      await prisma.quoteWorkTemplate.delete({ where: { id: tmpl.id } });
+      await prisma.quote.delete({ where: { id: quoteId } });
+    });
+
+    it("apply → send → activate: JobTask receives completionRequirementsJson from frozen snapshot v2", async () => {
+      const quoteId = await createReadyDraftQuote();
+      const line = await prisma.quoteLineItem.findFirstOrThrow({ where: { quoteId } });
+      const stage = await prisma.quoteLineExecutionStage.findFirstOrThrow({ where: { quoteLineItemId: line.id } });
+      await quoteMutationAddLineExecutionTask(
+        salesCtxA,
+        fd({
+          quoteId,
+          stageId: stage.id,
+          title: "Activation gate task",
+          evidenceRequired: "true",
+          minAcceptedEvidenceCount: "1",
+        }),
+      );
+      await quoteMutationSaveExecutionTaskAsTemplate(
+        salesCtxA,
+        fd({
+          quoteId,
+          stageId: stage.id,
+          taskId: (
+            await prisma.quoteLineExecutionTask.findFirstOrThrow({
+              where: { stageId: stage.id, title: "Activation gate task" },
+            })
+          ).id,
+          name: `Act gate tmpl ${suffix}`,
+        }),
+      );
+      const tmpl = await prisma.quoteWorkTemplate.findFirstOrThrow({
+        where: { organizationId: orgAId, name: `Act gate tmpl ${suffix}` },
+      });
+      const stage2 = await prisma.quoteLineExecutionStage.create({
+        data: { organizationId: orgAId, quoteLineItemId: line.id, title: "For activation insert", sortOrder: 97 },
+      });
+      const ins = await quoteMutationInsertTaskTemplateIntoStage(
+        salesCtxA,
+        fd({ quoteId, stageId: stage2.id, templateId: tmpl.id }),
+      );
+      expect(ins.ok).toBe(true);
+
+      const sourceGated = await prisma.quoteLineExecutionTask.findFirstOrThrow({
+        where: { organizationId: orgAId, stageId: stage.id, title: "Activation gate task" },
+      });
+      await prisma.quoteLineExecutionTask.delete({ where: { id: sourceGated.id } });
+
+      const ready = await quoteMutationMarkReadyToSend(salesCtxA, fd({ quoteId }));
+      expect(ready.ok).toBe(true);
+      const sent = await quoteMutationMarkSent(salesCtxA, fd({ quoteId }));
+      expect(sent.ok).toBe(true);
+      const row = await prisma.quote.findUniqueOrThrow({ where: { id: quoteId } });
+      const snap = parseValidatedSentQuoteSnapshot(row.sentSnapshotJson);
+      expect(snap && "version" in snap && snap.version).toBe(2);
+      if (!snap || !("internalExecutionPlan" in snap)) throw new Error("snap");
+      const planStr = JSON.stringify(snap.internalExecutionPlan);
+      expect(planStr).toContain("Activation gate task");
+      expect(planStr).toContain("completionRequirementsJson");
+
+      const preview = parseSentSnapshotPreviewDto(row.sentSnapshotJson);
+      expect(preview).toBeTruthy();
+      expect(JSON.stringify(preview).toLowerCase()).not.toContain("completionrequirementsjson");
+
+      const acc = await quoteMutationMarkAccepted(salesCtxA, fd({ quoteId }));
+      expect(acc.ok).toBe(true);
+      const act = await quoteMutationActivateAcceptedQuoteAsJob(officeCtxA, fd({ quoteId }));
+      expect(act.ok).toBe(true);
+      if (!act.ok || !act.jobId) throw new Error("activate");
+      const jt = await prisma.jobTask.findFirst({
+        where: { organizationId: orgAId, jobId: act.jobId, title: "Activation gate task" },
+      });
+      expect(jt?.completionRequirementsJson).toEqual({
+        version: 1,
+        evidence: { required: true, minAcceptedCount: 1, allowJobLevelEvidence: false },
+      });
+
+      await prisma.quoteWorkTemplate.delete({ where: { id: tmpl.id } });
+      await prisma.quote.delete({ where: { id: quoteId } });
+    });
   });
 });

@@ -5,6 +5,11 @@ import { PricingMode, QuoteAssumptionVisibility, QuoteLineMode, QuoteStatus } fr
 import { z } from "zod";
 
 import { formatQuoteStatus } from "@/lib/format-enums";
+import { isQuoteCustomerPreviewFrozen } from "@/lib/quote-lifecycle";
+import {
+  completionRequirementsV1Schema,
+  parseJobTaskCompletionRequirements,
+} from "@/server/phase13/completion-requirements";
 
 
 
@@ -167,6 +172,8 @@ const sentInternalExecutionTaskSnapshotSchema = z.object({
   customerVisible: z.boolean(),
   customerLabel: z.string().nullable().optional(),
   internalNotes: z.string().nullable().optional(),
+  /** Frozen planned evidence completion gate (Phase 13 v1). Omitted on legacy v2 snapshots. */
+  completionRequirementsJson: z.union([z.null(), completionRequirementsV1Schema]).optional(),
 });
 
 const sentInternalExecutionStageSnapshotSchema = z.object({
@@ -223,6 +230,7 @@ export type LineItemForInternalExecutionSnapshot = Pick<QuoteLineItem, "id" | "t
       | "customerVisible"
       | "customerLabel"
       | "internalNotes"
+      | "completionRequirementsJson"
     >[];
   }[];
 };
@@ -250,19 +258,23 @@ export function buildInternalExecutionPlanFromLineItems(
           internalNotes: s.internalNotes,
           tasks: [...s.tasks]
             .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id))
-            .map((t) => ({
-              id: t.id,
-              title: t.title,
-              description: t.description,
-              status: String(t.status),
-              isRequired: t.isRequired,
-              sortOrder: t.sortOrder,
-              assignedRole: t.assignedRole,
-              estimatedDurationMinutes: t.estimatedDurationMinutes,
-              customerVisible: t.customerVisible,
-              customerLabel: t.customerLabel,
-              internalNotes: t.internalNotes,
-            })),
+            .map((t) => {
+              const req = parseJobTaskCompletionRequirements(t.completionRequirementsJson);
+              const base = {
+                id: t.id,
+                title: t.title,
+                description: t.description,
+                status: String(t.status),
+                isRequired: t.isRequired,
+                sortOrder: t.sortOrder,
+                assignedRole: t.assignedRole,
+                estimatedDurationMinutes: t.estimatedDurationMinutes,
+                customerVisible: t.customerVisible,
+                customerLabel: t.customerLabel,
+                internalNotes: t.internalNotes,
+              };
+              return req.kind === "valid" ? { ...base, completionRequirementsJson: req.v1 } : base;
+            }),
         })),
     }));
   return { lines };
@@ -333,10 +345,8 @@ export function getQuotePreviewForWorkspace(params: {
 
   const { quoteStatus, sentSnapshotJson, liveParams } = params;
 
-  if (quoteStatus !== QuoteStatus.SENT) {
-
+  if (!isQuoteCustomerPreviewFrozen(quoteStatus)) {
     return { kind: "live", preview: buildQuoteCustomerPreviewDTO(liveParams) };
-
   }
 
   const frozen = parseSentSnapshotPreviewDto(sentSnapshotJson);

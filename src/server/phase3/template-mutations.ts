@@ -1,10 +1,11 @@
 /**
  * Phase 3A quote work templates — org-scoped, copy-only. Do not import from client components.
  */
-import { Prisma, QuoteStatus, QuoteWorkTemplateKind } from "@prisma/client";
+import { Prisma, QuoteWorkTemplateKind } from "@prisma/client";
 import type { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { canAuthorQuotes } from "@/lib/phase2-permissions";
+import { isQuoteStructurallyLocked } from "@/lib/quote-lifecycle";
 import { canManageQuoteWorkTemplates } from "@/lib/phase3-permissions";
 import type { OrgSessionContext } from "@/server/phase1/org-session";
 import { QuoteActivityEventType } from "@/server/phase2/quote-activity-types";
@@ -73,14 +74,19 @@ export async function quoteMutationSaveLineItemAsTemplate(
 
   const quote = await getQuoteWorkspace(ctx.organizationId, parsed.data.quoteId);
   if (!quote) return { ok: false, error: "Quote not found." };
-  if (quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(quote.status)) {
     return { ok: false, error: "Save as template is not available for sent quotes." };
   }
 
   const line = quote.lineItems.find((l) => l.id === parsed.data.lineItemId);
   if (!line) return { ok: false, error: "Line item not found." };
 
-  const payload = buildLineItemWithPlanPayloadFromLine(line);
+  let payload;
+  try {
+    payload = buildLineItemWithPlanPayloadFromLine(line);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Could not build work template payload." };
+  }
   const tags = parseTagsFromRaw(parsed.data.tagsRaw);
 
   const tmpl = await prisma.quoteWorkTemplate.create({
@@ -130,7 +136,7 @@ export async function quoteMutationSaveStageAsTemplate(
 
   const quote = await getQuoteWorkspace(ctx.organizationId, parsed.data.quoteId);
   if (!quote) return { ok: false, error: "Quote not found." };
-  if (quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(quote.status)) {
     return { ok: false, error: "Save as template is not available for sent quotes." };
   }
 
@@ -139,7 +145,12 @@ export async function quoteMutationSaveStageAsTemplate(
   const stage = line.executionStages.find((s) => s.id === parsed.data.stageId);
   if (!stage) return { ok: false, error: "Stage not found." };
 
-  const payload = buildStageWithTasksPayloadFromStage(stage);
+  let payload;
+  try {
+    payload = buildStageWithTasksPayloadFromStage(stage);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Could not build work template payload." };
+  }
   const tags = parseTagsFromRaw(parsed.data.tagsRaw);
 
   const tmpl = await prisma.quoteWorkTemplate.create({
@@ -189,7 +200,7 @@ export async function quoteMutationSaveExecutionTaskAsTemplate(
 
   const quote = await getQuoteWorkspace(ctx.organizationId, parsed.data.quoteId);
   if (!quote) return { ok: false, error: "Quote not found." };
-  if (quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(quote.status)) {
     return { ok: false, error: "Save as template is not available for sent quotes." };
   }
 
@@ -204,7 +215,12 @@ export async function quoteMutationSaveExecutionTaskAsTemplate(
   }
   if (!foundTask) return { ok: false, error: "Task not found." };
 
-  const payload = buildTaskPayloadFromTask(foundTask);
+  let payload;
+  try {
+    payload = buildTaskPayloadFromTask(foundTask);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Could not build work template payload." };
+  }
   const tags = parseTagsFromRaw(parsed.data.tagsRaw);
 
   const tmpl = await prisma.quoteWorkTemplate.create({
@@ -332,7 +348,7 @@ export async function quoteMutationInsertLineItemTemplateIntoQuote(
     where: { id: parsed.data.quoteId, organizationId: ctx.organizationId },
   });
   if (!quote) return { ok: false, error: "Quote not found." };
-  if (quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(quote.status)) {
     return { ok: false, error: "Sent quotes cannot receive template inserts." };
   }
 
@@ -350,19 +366,23 @@ export async function quoteMutationInsertLineItemTemplateIntoQuote(
     return { ok: false, error: e instanceof Error ? e.message : "Invalid template payload." };
   }
 
-  await prisma.$transaction(async (tx) => {
-    await materializeLineItemWithPlan({
-      tx,
-      organizationId: ctx.organizationId,
-      quoteId: quote.id,
-      payload: linePayload,
-      templateMeta: {
-        templateId: tmpl.id,
-        templateName: tmpl.name,
-        contentVersion: tmpl.contentVersion,
-      },
+  try {
+    await prisma.$transaction(async (tx) => {
+      await materializeLineItemWithPlan({
+        tx,
+        organizationId: ctx.organizationId,
+        quoteId: quote.id,
+        payload: linePayload,
+        templateMeta: {
+          templateId: tmpl.id,
+          templateName: tmpl.name,
+          contentVersion: tmpl.contentVersion,
+        },
+      });
     });
-  });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Template insert failed." };
+  }
 
   await recordQuoteActivity(prisma, {
     organizationId: ctx.organizationId,
@@ -396,7 +416,7 @@ export async function quoteMutationInsertStageTemplateIntoLine(
     where: { id: parsed.data.quoteId, organizationId: ctx.organizationId },
   });
   if (!quote) return { ok: false, error: "Quote not found." };
-  if (quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(quote.status)) {
     return { ok: false, error: "Sent quotes cannot receive template inserts." };
   }
 
@@ -419,15 +439,19 @@ export async function quoteMutationInsertStageTemplateIntoLine(
     return { ok: false, error: e instanceof Error ? e.message : "Invalid template payload." };
   }
 
-  await prisma.$transaction(async (tx) => {
-    await materializeStageWithTasks({
-      tx,
-      organizationId: ctx.organizationId,
-      quoteId: quote.id,
-      lineItemId: parsed.data.lineItemId,
-      payload: stagePayload,
+  try {
+    await prisma.$transaction(async (tx) => {
+      await materializeStageWithTasks({
+        tx,
+        organizationId: ctx.organizationId,
+        quoteId: quote.id,
+        lineItemId: parsed.data.lineItemId,
+        payload: stagePayload,
+      });
     });
-  });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Template insert failed." };
+  }
 
   await recordQuoteActivity(prisma, {
     organizationId: ctx.organizationId,
@@ -461,7 +485,7 @@ export async function quoteMutationInsertTaskTemplateIntoStage(
     where: { id: parsed.data.quoteId, organizationId: ctx.organizationId },
   });
   if (!quote) return { ok: false, error: "Quote not found." };
-  if (quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(quote.status)) {
     return { ok: false, error: "Sent quotes cannot receive template inserts." };
   }
 
@@ -487,15 +511,19 @@ export async function quoteMutationInsertTaskTemplateIntoStage(
     return { ok: false, error: e instanceof Error ? e.message : "Invalid template payload." };
   }
 
-  await prisma.$transaction(async (tx) => {
-    await materializeTask({
-      tx,
-      organizationId: ctx.organizationId,
-      quoteId: quote.id,
-      stageId: parsed.data.stageId,
-      payload: taskPayload,
+  try {
+    await prisma.$transaction(async (tx) => {
+      await materializeTask({
+        tx,
+        organizationId: ctx.organizationId,
+        quoteId: quote.id,
+        stageId: parsed.data.stageId,
+        payload: taskPayload,
+      });
     });
-  });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Template insert failed." };
+  }
 
   await recordQuoteActivity(prisma, {
     organizationId: ctx.organizationId,

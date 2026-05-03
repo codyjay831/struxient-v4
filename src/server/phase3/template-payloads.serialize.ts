@@ -1,11 +1,16 @@
 import type { Prisma } from "@prisma/client";
-import { Prisma as PrismaNs, QuoteWorkTemplateKind } from "@prisma/client";
+import { Prisma as PrismaNs } from "@prisma/client";
 import type {
   LineItemWithPlanPayload,
   StageWithTasksPayload,
   TaskOnlyPayload,
 } from "@/server/phase3/template-payloads";
-import { normalizePayloadJson } from "@/server/phase3/template-payloads";
+import {
+  parseLineItemWithPlanPayload,
+  parseStageWithTasksPayload,
+  parseTaskOnlyPayload,
+} from "@/server/phase3/template-payloads";
+import { serializeQuoteTaskCompletionRequirementsForTemplatePayload } from "@/server/phase3/template-completion-requirements";
 
 type LineWithStages = Prisma.QuoteLineItemGetPayload<{
   include: {
@@ -40,12 +45,13 @@ function taskToPayload(t: ExecTask) {
     customerVisible: t.customerVisible,
     customerLabel: t.customerLabel?.trim() ? t.customerLabel.trim() : null,
     internalNotes: t.internalNotes?.trim() ? t.internalNotes.trim() : null,
+    ...serializeQuoteTaskCompletionRequirementsForTemplatePayload(t.completionRequirementsJson, t.title),
   };
 }
 
 export function buildLineItemWithPlanPayloadFromLine(line: LineWithStages): LineItemWithPlanPayload {
   const qty = Number(line.quantity);
-  const payload: LineItemWithPlanPayload = {
+  const payload = {
     line: {
       title: line.title.trim(),
       customerDescription: line.customerDescription.trim(),
@@ -63,26 +69,23 @@ export function buildLineItemWithPlanPayloadFromLine(line: LineWithStages): Line
       tasks: sortedTasks(s).map(taskToPayload),
     })),
   };
-  normalizePayloadJson(QuoteWorkTemplateKind.LINE_ITEM_WITH_PLAN, payload);
-  return payload;
+  return parseLineItemWithPlanPayload(payload);
 }
 
 export function buildStageWithTasksPayloadFromStage(stage: StageWithTasks): StageWithTasksPayload {
-  const payload: StageWithTasksPayload = {
+  const payload = {
     stage: {
       title: stage.title.trim(),
       internalNotes: stage.internalNotes?.trim() ? stage.internalNotes.trim() : null,
     },
     tasks: sortedTasks(stage).map(taskToPayload),
   };
-  normalizePayloadJson(QuoteWorkTemplateKind.STAGE_WITH_TASKS, payload);
-  return payload;
+  return parseStageWithTasksPayload(payload);
 }
 
 export function buildTaskPayloadFromTask(task: ExecTask): TaskOnlyPayload {
-  const payload: TaskOnlyPayload = { task: taskToPayload(task) };
-  normalizePayloadJson(QuoteWorkTemplateKind.TASK, payload);
-  return payload;
+  const payload = { task: taskToPayload(task) };
+  return parseTaskOnlyPayload(payload);
 }
 
 /** Ensures JSON is safe for Prisma Json column (no Decimal, Date, etc.). */

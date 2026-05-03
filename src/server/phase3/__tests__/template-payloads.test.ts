@@ -54,4 +54,65 @@ describe("template payload parsers", () => {
   it("parseTaskOnlyPayload rejects invalid payload", () => {
     expect(() => parseTaskOnlyPayload({ task: {} })).toThrow();
   });
+
+  const canonicalReqV1 = {
+    version: 1 as const,
+    evidence: { required: true, minAcceptedCount: 2, allowJobLevelEvidence: true },
+  };
+
+  it("parseTaskOnlyPayload accepts optional valid completionRequirementsJson (canonical v1)", () => {
+    const p = parseTaskOnlyPayload({
+      task: {
+        title: "Inspect",
+        isRequired: false,
+        completionRequirementsJson: canonicalReqV1,
+      },
+    });
+    expect(p.task.completionRequirementsJson).toEqual(canonicalReqV1);
+  });
+
+  it("parseTaskOnlyPayload rejects invalid completionRequirementsJson", () => {
+    expect(() =>
+      parseTaskOnlyPayload({
+        task: {
+          title: "Bad gate",
+          isRequired: false,
+          completionRequirementsJson: { version: 99, evidence: { required: true, minAcceptedCount: 1 } },
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("parseTaskOnlyPayload strips completionRequirementsJson when evidence gate is logically off", () => {
+    const p = parseTaskOnlyPayload({
+      task: {
+        title: "No gate",
+        isRequired: false,
+        completionRequirementsJson: {
+          version: 1,
+          evidence: { required: false, allowJobLevelEvidence: false },
+        },
+      },
+    });
+    expect(p.task).not.toHaveProperty("completionRequirementsJson");
+  });
+
+  it("parseLineItemWithPlanPayload carries completionRequirementsJson on nested tasks", () => {
+    const p = parseLineItemWithPlanPayload({
+      line: {
+        title: "Line",
+        customerDescription: "CD",
+        quantity: 1,
+        pricingMode: PricingMode.FIXED_PRICE,
+        lineMode: QuoteLineMode.REQUIRED,
+      },
+      stages: [
+        {
+          title: "S1",
+          tasks: [{ title: "With gate", completionRequirementsJson: canonicalReqV1 }],
+        },
+      ],
+    });
+    expect(p.stages[0]?.tasks[0]?.completionRequirementsJson).toEqual(canonicalReqV1);
+  });
 });

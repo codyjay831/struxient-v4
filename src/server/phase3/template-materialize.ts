@@ -1,5 +1,7 @@
 import { Prisma, PricingMode, QuoteLineMode, QuoteTaskStatus, QuoteWorkTemplateKind } from "@prisma/client";
+import type { CompletionRequirementsV1Parsed } from "@/server/phase13/completion-requirements";
 import type { LineItemWithPlanPayload, StageWithTasksPayload, TaskOnlyPayload } from "@/server/phase3/template-payloads";
+import { quoteRowCompletionJsonFromTemplateTaskPayload } from "@/server/phase3/template-completion-requirements";
 import { recalculateQuoteTotals } from "@/server/phase2/recalculate-quote-totals";
 
 export type LineTemplateMeta = {
@@ -15,6 +17,20 @@ function sortStagesPayload(stages: LineItemWithPlanPayload["stages"]) {
 function sortTasksPayload<T extends { sortOrder?: number; title: string }>(tasks: T[]) {
   return [...tasks].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 }
+
+/** Materialized task row fields from template payload + optional Phase 13 v1 gate (runtime-validated by Zod before insert). */
+type TemplateTaskPayloadWithOptionalGate = {
+  title: string;
+  description: string | null;
+  isRequired: boolean;
+  sortOrder?: number;
+  assignedRole: string | null;
+  estimatedDurationMinutes: number | null | undefined;
+  customerVisible: boolean;
+  customerLabel: string | null;
+  internalNotes: string | null;
+  completionRequirementsJson?: CompletionRequirementsV1Parsed;
+};
 
 export async function materializeLineItemWithPlan(params: {
   tx: Prisma.TransactionClient;
@@ -78,7 +94,7 @@ export async function materializeLineItemWithPlan(params: {
 
     const tasksOrdered = sortTasksPayload(sp.tasks);
     for (let ti = 0; ti < tasksOrdered.length; ti++) {
-      const tp = tasksOrdered[ti];
+      const tp = tasksOrdered[ti] as TemplateTaskPayloadWithOptionalGate;
       const maxTk = await tx.quoteLineExecutionTask.aggregate({
         where: { stageId: stage.id, organizationId },
         _max: { sortOrder: true },
@@ -98,6 +114,7 @@ export async function materializeLineItemWithPlan(params: {
           customerVisible: Boolean(tp.customerVisible),
           customerLabel: tp.customerLabel,
           internalNotes: tp.internalNotes,
+          completionRequirementsJson: quoteRowCompletionJsonFromTemplateTaskPayload(tp.completionRequirementsJson),
         },
       });
     }
@@ -141,7 +158,7 @@ export async function materializeStageWithTasks(params: {
 
   const tasksOrdered = sortTasksPayload(payload.tasks);
   for (let ti = 0; ti < tasksOrdered.length; ti++) {
-    const tp = tasksOrdered[ti];
+    const tp = tasksOrdered[ti] as TemplateTaskPayloadWithOptionalGate;
     const maxTk = await tx.quoteLineExecutionTask.aggregate({
       where: { stageId: stage.id, organizationId },
       _max: { sortOrder: true },
@@ -161,6 +178,7 @@ export async function materializeStageWithTasks(params: {
         customerVisible: Boolean(tp.customerVisible),
         customerLabel: tp.customerLabel,
         internalNotes: tp.internalNotes,
+        completionRequirementsJson: quoteRowCompletionJsonFromTemplateTaskPayload(tp.completionRequirementsJson),
       },
     });
   }
@@ -190,7 +208,7 @@ export async function materializeTask(params: {
     _max: { sortOrder: true },
   });
   const taskSort = (maxTk._max.sortOrder ?? -1) + 1;
-  const tp = payload.task;
+  const tp = payload.task as TemplateTaskPayloadWithOptionalGate;
 
   const task = await tx.quoteLineExecutionTask.create({
     data: {
@@ -206,6 +224,7 @@ export async function materializeTask(params: {
       customerVisible: Boolean(tp.customerVisible),
       customerLabel: tp.customerLabel,
       internalNotes: tp.internalNotes,
+      completionRequirementsJson: quoteRowCompletionJsonFromTemplateTaskPayload(tp.completionRequirementsJson),
     },
   });
 

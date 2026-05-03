@@ -4,15 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireOrgSession } from "@/server/phase1/org-session";
 import {
-  quoteMutationArchiveQuoteWorkTemplate,
-  quoteMutationInsertLineItemTemplateIntoQuote,
-  quoteMutationInsertStageTemplateIntoLine,
-  quoteMutationInsertTaskTemplateIntoStage,
-  quoteMutationSaveExecutionTaskAsTemplate,
-  quoteMutationSaveLineItemAsTemplate,
-  quoteMutationSaveStageAsTemplate,
-} from "@/server/phase3/template-mutations";
-import {
   quoteMutationAddAssumption,
   quoteMutationAddLineExecutionStage,
   quoteMutationAddLineExecutionTask,
@@ -36,9 +27,30 @@ import {
   zodActionFailure,
   type QuoteActionResult,
 } from "@/server/phase2/quote-mutations";
+import {
+  quoteMutationArchiveQuoteWorkTemplate,
+  quoteMutationInsertLineItemTemplateIntoQuote,
+  quoteMutationInsertStageTemplateIntoLine,
+  quoteMutationInsertTaskTemplateIntoStage,
+  quoteMutationSaveExecutionTaskAsTemplate,
+  quoteMutationSaveLineItemAsTemplate,
+  quoteMutationSaveStageAsTemplate,
+} from "@/server/phase3/template-mutations";
+import {
+  quoteMutationActivateAcceptedQuoteAsJob,
+  quoteMutationMarkAccepted,
+} from "@/server/phase4/quote-accept-activate";
+import {
+  createPortalAccessTokenForQuote,
+  regeneratePortalTokenForQuote,
+  revokeActivePortalTokenForQuote,
+  type PortalTokenMutationResult,
+} from "@/server/phase8/portal-token-mutations";
+import { portalQuoteIdFormSchema } from "@/server/phase8/validation";
 import { createQuoteDraftFromOpportunitySchema } from "@/server/phase2/validation";
 
 export type { QuoteActionResult };
+export type PortalLinkActionResult = PortalTokenMutationResult;
 
 export async function createQuoteDraftFromOpportunity(
   _prev: QuoteActionResult | undefined,
@@ -246,6 +258,36 @@ export async function markQuoteSent(_prev: QuoteActionResult | undefined, formDa
   return r;
 }
 
+export async function markQuoteAccepted(
+  _prev: QuoteActionResult | undefined,
+  formData: FormData,
+): Promise<QuoteActionResult> {
+  const ctx = await requireOrgSession();
+  const r = await quoteMutationMarkAccepted(ctx, formData);
+  if (r.ok && r.quoteId) {
+    revalidateQuote(r.quoteId);
+    revalidatePath("/app/jobs");
+  }
+  return r;
+}
+
+export async function activateAcceptedQuoteAsJob(
+  _prev: QuoteActionResult | undefined,
+  formData: FormData,
+): Promise<QuoteActionResult> {
+  const ctx = await requireOrgSession();
+  const r = await quoteMutationActivateAcceptedQuoteAsJob(ctx, formData);
+  if (r.ok && r.quoteId) {
+    revalidateQuote(r.quoteId);
+    revalidatePath("/app/jobs");
+    if (r.jobId) {
+      revalidatePath(`/app/jobs/${r.jobId}`);
+      redirect(`/app/jobs/${r.jobId}`);
+    }
+  }
+  return r;
+}
+
 export async function logQuotePreviewed(
   _prev: QuoteActionResult | undefined,
   formData: FormData,
@@ -324,5 +366,56 @@ export async function insertTaskTemplateIntoStage(
   const ctx = await requireOrgSession();
   const r = await quoteMutationInsertTaskTemplateIntoStage(ctx, formData);
   if (r.ok && r.quoteId) revalidateQuote(r.quoteId);
+  return r;
+}
+
+export async function createCustomerPortalLink(
+  _prev: PortalLinkActionResult | undefined,
+  formData: FormData,
+): Promise<PortalLinkActionResult> {
+  const ctx = await requireOrgSession();
+  const parsed = portalQuoteIdFormSchema.safeParse({ quoteId: formData.get("quoteId") });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid request" };
+  }
+  const r = await createPortalAccessTokenForQuote(ctx, parsed.data.quoteId);
+  if (r.ok) {
+    revalidateQuote(parsed.data.quoteId);
+    revalidatePath("/app/jobs");
+  }
+  return r;
+}
+
+export async function revokeCustomerPortalLink(
+  _prev: PortalLinkActionResult | undefined,
+  formData: FormData,
+): Promise<PortalLinkActionResult> {
+  const ctx = await requireOrgSession();
+  const parsed = portalQuoteIdFormSchema.safeParse({ quoteId: formData.get("quoteId") });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid request" };
+  }
+  const r = await revokeActivePortalTokenForQuote(ctx, parsed.data.quoteId);
+  if (r.ok) {
+    revalidateQuote(parsed.data.quoteId);
+    revalidatePath("/app/jobs");
+  }
+  return r;
+}
+
+export async function regenerateCustomerPortalLink(
+  _prev: PortalLinkActionResult | undefined,
+  formData: FormData,
+): Promise<PortalLinkActionResult> {
+  const ctx = await requireOrgSession();
+  const parsed = portalQuoteIdFormSchema.safeParse({ quoteId: formData.get("quoteId") });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid request" };
+  }
+  const r = await regeneratePortalTokenForQuote(ctx, parsed.data.quoteId);
+  if (r.ok) {
+    revalidateQuote(parsed.data.quoteId);
+    revalidatePath("/app/jobs");
+  }
   return r;
 }

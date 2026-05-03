@@ -112,18 +112,27 @@ export const removeQuoteLineExecutionStageSchema = z.object({
   stageId: nonEmptyId,
 });
 
-export const addQuoteLineExecutionTaskSchema = z.object({
-  quoteId: nonEmptyId,
-  stageId: nonEmptyId,
-  title: z.string().trim().min(1).max(500),
-  description: z.string().trim().max(10_000).optional().nullable(),
-  isRequired: z.coerce.boolean().optional(),
-  assignedRole: z.string().trim().max(120).optional().nullable(),
-  estimatedDurationMinutes: z.coerce.number().int().positive().optional().nullable(),
-  customerVisible: z.coerce.boolean().optional(),
-  customerLabel: z.string().trim().max(200).optional().nullable(),
-  internalNotes: z.string().trim().max(10_000).optional().nullable(),
+/** Planned runtime evidence gate (Phase 13 v1 JSON); coerced from FormData in mutations. */
+export const quoteLineExecutionEvidenceFormSchema = z.object({
+  evidenceRequired: z.boolean(),
+  minAcceptedEvidenceCount: z.coerce.number().int().min(1).max(10),
+  allowJobLevelEvidence: z.boolean(),
 });
+
+export const addQuoteLineExecutionTaskSchema = z
+  .object({
+    quoteId: nonEmptyId,
+    stageId: nonEmptyId,
+    title: z.string().trim().min(1).max(500),
+    description: z.string().trim().max(10_000).optional().nullable(),
+    isRequired: z.coerce.boolean().optional(),
+    assignedRole: z.string().trim().max(120).optional().nullable(),
+    estimatedDurationMinutes: z.coerce.number().int().positive().optional().nullable(),
+    customerVisible: z.coerce.boolean().optional(),
+    customerLabel: z.string().trim().max(200).optional().nullable(),
+    internalNotes: z.string().trim().max(10_000).optional().nullable(),
+  })
+  .merge(quoteLineExecutionEvidenceFormSchema);
 
 export const updateQuoteLineExecutionTaskSchema = addQuoteLineExecutionTaskSchema.extend({
   taskId: nonEmptyId,

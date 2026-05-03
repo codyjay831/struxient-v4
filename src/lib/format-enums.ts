@@ -2,6 +2,8 @@ import type {
   CustomerContactType,
   CustomerKind,
   CustomerStatus,
+  JobStatus,
+  JobTaskStatus,
   OpportunityPriority,
   OpportunityStatus,
   OpportunityTaskKind,
@@ -45,5 +47,13 @@ export function formatTaskStatus(s: OpportunityTaskStatus) {
 }
 
 export function formatQuoteStatus(s: QuoteStatus) {
+  return titleCaseFromSnake(s);
+}
+
+export function formatJobStatus(s: JobStatus) {
+  return titleCaseFromSnake(s);
+}
+
+export function formatJobTaskStatus(s: JobTaskStatus) {
   return titleCaseFromSnake(s);
 }

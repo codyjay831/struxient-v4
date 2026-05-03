@@ -352,7 +352,63 @@ describe("buildQuoteCustomerPreviewDTO", () => {
 
   });
 
-
+  it("getQuotePreviewForWorkspace: ACCEPTED uses frozen snapshot like SENT", () => {
+    const preview = buildQuoteCustomerPreviewDTO({
+      organizationName: "Acme Co",
+      quote: {
+        title: "Accepted title",
+        displayNumber: 3,
+        status: QuoteStatus.ACCEPTED,
+        serviceAddressText: "1",
+        serviceAddressTbd: false,
+        scopeSummary: null,
+        scopeIntent: "S",
+        customerFacingIntro: null,
+        pricingSubtotalCents: 100,
+        totalCents: 100,
+      },
+      customer: { displayName: "Bob" },
+      lineItems: [
+        {
+          id: "l1",
+          title: "Line",
+          customerDescription: "D",
+          quantity: { toString: () => "1" } as never,
+          pricingMode: PricingMode.FIXED_PRICE,
+          unitPriceCents: 100,
+          lineTotalCents: 100,
+          lineMode: QuoteLineMode.REQUIRED,
+        },
+      ],
+      assumptions: [],
+    });
+    const snapshot = { version: 1 as const, preview };
+    const liveParams = {
+      organizationName: "WRONG",
+      quote: {
+        title: "Live wrong",
+        displayNumber: 3,
+        status: QuoteStatus.ACCEPTED,
+        serviceAddressText: "1",
+        serviceAddressTbd: false,
+        scopeSummary: null,
+        scopeIntent: "S",
+        customerFacingIntro: null,
+        pricingSubtotalCents: 999,
+        totalCents: 999,
+      },
+      customer: { displayName: "Wrong" },
+      lineItems: [],
+      assumptions: [],
+    };
+    const r = getQuotePreviewForWorkspace({
+      quoteStatus: QuoteStatus.ACCEPTED,
+      sentSnapshotJson: snapshot,
+      liveParams,
+    });
+    expect(r.kind).toBe("frozen");
+    if (r.kind === "frozen") expect(r.preview.quoteTitle).toBe("Accepted title");
+  });
 
   it("getQuotePreviewForWorkspace: SENT missing preview is integrity error, not live fallback", () => {
 
@@ -469,6 +525,7 @@ describe("buildQuoteCustomerPreviewDTO", () => {
                 customerVisible: true,
                 customerLabel: "Permitting",
                 internalNotes: "secret task",
+                completionRequirementsJson: null,
               },
             ],
           },
@@ -489,6 +546,87 @@ describe("buildQuoteCustomerPreviewDTO", () => {
     expect(parsed.internalExecutionPlan.lines[0]?.stages[0]?.tasks[0]?.status).toBe("NOT_READY");
     expect(parseSentSnapshotInternalExecutionPlan(snapshot)?.lines[0]?.stages[0]?.tasks[0]?.id).toBe("t1");
     expect(parseSentSnapshotPreviewDto(snapshot)?.quoteTitle).toBe("T");
+  });
+
+  it("parseValidatedSentQuoteSnapshot v2 accepts optional completionRequirementsJson on internal tasks", () => {
+    const preview = buildQuoteCustomerPreviewDTO({
+      organizationName: "O",
+      quote: {
+        title: "T2",
+        displayNumber: 1,
+        status: QuoteStatus.DRAFT,
+        serviceAddressText: "1",
+        serviceAddressTbd: false,
+        scopeSummary: null,
+        scopeIntent: "x",
+        customerFacingIntro: null,
+        pricingSubtotalCents: null,
+        totalCents: null,
+      },
+      customer: { displayName: "C" },
+      lineItems: [
+        {
+          id: "l1",
+          title: "Line",
+          customerDescription: "d",
+          quantity: { toString: () => "1" } as never,
+          pricingMode: PricingMode.FIXED_PRICE,
+          unitPriceCents: 1,
+          lineTotalCents: 1,
+          lineMode: QuoteLineMode.REQUIRED,
+        },
+      ],
+      assumptions: [],
+    });
+    const req = {
+      version: 1 as const,
+      evidence: { required: true as const, minAcceptedCount: 2, allowJobLevelEvidence: false as const },
+    };
+    const snapshot = {
+      version: 2 as const,
+      sentAt: "2026-01-01T00:00:00.000Z",
+      quoteId: "q2",
+      displayNumber: 1,
+      preview,
+      internalExecutionPlan: {
+        lines: [
+          {
+            quoteLineItemId: "l1",
+            title: "Line",
+            sortOrder: 0,
+            stages: [
+              {
+                id: "s1",
+                title: "S",
+                sortOrder: 0,
+                internalNotes: null,
+                tasks: [
+                  {
+                    id: "t1",
+                    title: "Task",
+                    description: null,
+                    status: "NOT_READY",
+                    isRequired: true,
+                    sortOrder: 0,
+                    assignedRole: null,
+                    estimatedDurationMinutes: null,
+                    customerVisible: false,
+                    customerLabel: null,
+                    internalNotes: null,
+                    completionRequirementsJson: req,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const parsed = parseValidatedSentQuoteSnapshot(snapshot);
+    expect(parsed && "version" in parsed && parsed.version).toBe(2);
+    const prevStr = JSON.stringify(parseSentSnapshotPreviewDto(snapshot)).toLowerCase();
+    expect(prevStr).not.toContain("completionrequirementsjson");
+    expect(prevStr).not.toContain("internalexecutionplan");
   });
 
   it("parseValidatedSentQuoteSnapshotV1 still accepts legacy v1 snapshots", () => {
@@ -531,6 +669,48 @@ describe("buildQuoteCustomerPreviewDTO", () => {
     expect(parseValidatedSentQuoteSnapshotV1(v1)?.version).toBe(1);
     expect(parseValidatedSentQuoteSnapshot(v1)?.version).toBe(1);
     expect(parseSentSnapshotPreviewDto(v1)?.quoteTitle).toBe("Legacy");
+  });
+
+  it("buildInternalExecutionPlanFromLineItems embeds valid v1 completionRequirementsJson", () => {
+    const plan = buildInternalExecutionPlanFromLineItems([
+      {
+        id: "l1",
+        title: "Line",
+        sortOrder: 0,
+        lineMode: QuoteLineMode.REQUIRED,
+        executionStages: [
+          {
+            id: "s1",
+            title: "S",
+            sortOrder: 0,
+            internalNotes: null,
+            tasks: [
+              {
+                id: "t1",
+                title: "Do",
+                description: null,
+                status: QuoteTaskStatus.NOT_READY,
+                isRequired: true,
+                sortOrder: 0,
+                assignedRole: null,
+                estimatedDurationMinutes: null,
+                customerVisible: false,
+                customerLabel: null,
+                internalNotes: null,
+                completionRequirementsJson: {
+                  version: 1,
+                  evidence: { required: true, minAcceptedCount: 2, allowJobLevelEvidence: true },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(plan.lines[0]?.stages[0]?.tasks[0]?.completionRequirementsJson).toEqual({
+      version: 1,
+      evidence: { required: true, minAcceptedCount: 2, allowJobLevelEvidence: true },
+    });
   });
 
 });

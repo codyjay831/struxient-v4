@@ -634,7 +634,7 @@ describe("Phase 2 quote mutations (integration)", () => {
 
     const deny = (msg: string, r: { ok: boolean; error?: string }) => {
       expect(r.ok, msg).toBe(false);
-      if (!r.ok) expect(r.error).toMatch(/sent|cannot be edited/i);
+      if (!r.ok) expect(r.error).toMatch(/sent|cannot be edited|locked/i);
     };
 
     deny(

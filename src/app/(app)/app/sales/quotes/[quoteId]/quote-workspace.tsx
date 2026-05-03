@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   CustomerContactType,
+  JobStatus,
   PricingMode,
   QuoteAssumptionVisibility,
   QuoteLineMode,
@@ -13,6 +14,7 @@ import {
 } from "@prisma/client";
 import type { QuoteSendReadinessItem } from "@/server/phase2/quote-readiness";
 import type { QuoteCustomerPreviewDTO, QuotePreviewWorkspaceResolution } from "@/server/phase2/customer-preview";
+import type { CompletionRequirementDto } from "@/server/phase13/completion-requirements";
 import {
   addQuoteAssumption,
   addQuoteLineExecutionStage,
@@ -21,6 +23,8 @@ import {
   addQuoteTask,
   logQuotePreviewed,
   markQuoteLineRemoved,
+  activateAcceptedQuoteAsJob,
+  markQuoteAccepted,
   markQuoteReadyToSend,
   markQuoteSent,
   removeQuoteAssumption,
@@ -40,7 +44,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { formatContactType, formatQuoteStatus } from "@/lib/format-enums";
+import { StaffPortalLinkPanel } from "@/components/customer-portal/staff-portal-link-panel";
+import {
+  StaffCustomerPortalSubmissionsPanel,
+  type StaffEvidencePromotionContext,
+  type StaffPortalSubmissionListItem,
+} from "@/components/customer-portal/staff-customer-portal-submissions-panel";
+import { formatContactType, formatJobStatus, formatQuoteStatus } from "@/lib/format-enums";
+import { isQuoteStructurallyLocked } from "@/lib/quote-lifecycle";
 import {
   SaveWorkTemplateDialog,
   WorkTemplateInsertDialog,
@@ -57,6 +68,71 @@ function ActionError({ state }: { state: QuoteActionResult | undefined }) {
   return (
     <p className="text-sm text-destructive" role="alert">
       {state.error}
+    </p>
+  );
+}
+
+function PlannedTaskEvidenceRequirementFields({
+  completionRequirement,
+}: {
+  completionRequirement?: CompletionRequirementDto;
+}) {
+  const active = completionRequirement?.state === "active";
+  const min = completionRequirement?.state === "active" ? completionRequirement.minAcceptedCount : 1;
+  const allowJob = completionRequirement?.state === "active" ? completionRequirement.allowJobLevelEvidence : false;
+  return (
+    <div className="space-y-2 rounded-sm border border-border/80 bg-background/30 p-2 md:col-span-2">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">After-sale completion gate</p>
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        Planned for job execution after the quote is sold. Accepted evidence is enforced when completing the runtime task
+        (Phase 13 gate). Not shown on the customer-facing quote preview unless this task is customer-visible with a label
+        for highlights only.
+      </p>
+      {completionRequirement?.state === "invalid" ? (
+        <p className="text-[11px] text-amber-400" role="status">
+          Stored requirement is invalid: {completionRequirement.message}. Clear the toggle and save to remove it, or set
+          valid values.
+        </p>
+      ) : null}
+      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+        <input type="checkbox" name="evidenceRequired" defaultChecked={active} />
+        Require accepted evidence before this task can be completed on the job
+      </label>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label className="text-xs">Minimum accepted evidence</Label>
+          <Input
+            type="number"
+            name="minAcceptedEvidenceCount"
+            min={1}
+            max={10}
+            defaultValue={min}
+            className="h-8 rounded-sm text-sm"
+          />
+        </div>
+        <label className="flex items-end gap-2 pb-1 text-xs text-muted-foreground">
+          <input type="checkbox" name="allowJobLevelEvidence" defaultChecked={allowJob} />
+          Allow job-level accepted evidence to count
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function PlannedTaskEvidenceReadOnly({ dto }: { dto: CompletionRequirementDto }) {
+  if (dto.state === "none") {
+    return (
+      <p className="text-[11px] text-muted-foreground">No accepted-evidence completion gate for this planned task.</p>
+    );
+  }
+  if (dto.state === "invalid") {
+    return <p className="text-[11px] text-amber-400">Invalid stored requirement: {dto.message}</p>;
+  }
+  return (
+    <p className="text-[11px] text-muted-foreground">
+      After activation, {dto.minAcceptedCount} accepted evidence record(s) required before this runtime task can be
+      completed.
+      {dto.allowJobLevelEvidence ? " Job-level accepted evidence may count." : ""} Internal only.
     </p>
   );
 }
@@ -152,6 +228,7 @@ export type QuoteWorkspaceProps = {
           customerVisible: boolean;
           customerLabel: string | null;
           internalNotes: string | null;
+          completionRequirement: CompletionRequirementDto;
         }[];
       }[];
     }[];
@@ -176,6 +253,9 @@ export type QuoteWorkspaceProps = {
       sortOrder: number;
       quoteLineItemId: string | null;
     }[];
+    acceptedAt: string | null;
+    activatedAt: string | null;
+    job: { id: string; displayNumber: number; status: JobStatus } | null;
   };
   readiness: QuoteSendReadinessItem[];
   sendBlocked: boolean;
@@ -185,6 +265,21 @@ export type QuoteWorkspaceProps = {
   previewResolution: QuotePreviewWorkspaceResolution;
   workTemplates: WorkTemplatesBundleDTO;
   canManageWorkTemplates: boolean;
+  customerPortal: {
+    showSection: boolean;
+    hasActiveToken: boolean;
+    lastViewedAt: string | null;
+    canCreateLink: boolean;
+    canRevokeRegenerateLink: boolean;
+  };
+  customerPortalSubmissions?: {
+    items: StaffPortalSubmissionListItem[];
+    newCount: number;
+    canView: boolean;
+    canManage: boolean;
+    canManageJobEvidence?: boolean;
+    evidencePromotion?: StaffEvidencePromotionContext;
+  };
 };
 
 export function QuoteWorkspace(props: QuoteWorkspaceProps) {
@@ -198,13 +293,18 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
     previewResolution,
     workTemplates,
     canManageWorkTemplates,
+    customerPortal,
+    customerPortalSubmissions,
   } = props;
-  const isSent = quote.status === QuoteStatus.SENT;
+  /** True after send through activation: quote structure and commercial snapshot are frozen here. */
+  const isSent = isQuoteStructurallyLocked(quote.status);
   const preview = previewResolution.kind === "SENT_SNAPSHOT_MISSING" ? null : previewResolution.preview;
   const snapshotIntegrityError = previewResolution.kind === "SENT_SNAPSHOT_MISSING";
   const [headerState, headerAction] = useActionState(updateQuote, undefined);
   const [readyState, readyAction] = useActionState(markQuoteReadyToSend, undefined);
   const [sentState, sentAction] = useActionState(markQuoteSent, undefined);
+  const [acceptState, acceptAction] = useActionState(markQuoteAccepted, undefined);
+  const [activateState, activateAction] = useActionState(activateAcceptedQuoteAsJob, undefined);
 
   const headline = sendBlocked
     ? "Send blocked — resolve checklist blockers"
@@ -254,13 +354,57 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
             </form>
           </div>
         ) : (
-          <p className="pt-2 text-xs text-muted-foreground">
-            Sent {quote.sentAt ? new Date(quote.sentAt).toLocaleString() : ""}. Structural edits are locked; internal
-            notes may still be updated below.
-          </p>
+          <div className="space-y-3 pt-2">
+            <p className="text-xs text-muted-foreground">
+              Sent {quote.sentAt ? new Date(quote.sentAt).toLocaleString() : ""}. Commercial scope and the quoted
+              execution plan are frozen. Internal notes may still be updated below. Field execution happens in{" "}
+              <span className="text-foreground/90">Jobs</span>, not in this workspace.
+            </p>
+            {quote.status === QuoteStatus.SENT ? (
+              <form action={acceptAction} className="flex flex-wrap items-end gap-3">
+                <input type="hidden" name="quoteId" value={quote.id} />
+                <Button type="submit" variant="secondary" className="rounded-sm">
+                  Mark accepted
+                </Button>
+                <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
+                  Records that the customer accepted the sent quote. This does not create job work yet. Requires a valid
+                  sent snapshot (version 2).
+                </p>
+              </form>
+            ) : null}
+            {quote.status === QuoteStatus.ACCEPTED && !quote.job ? (
+              <form action={activateAction} className="flex flex-wrap items-end gap-3">
+                <input type="hidden" name="quoteId" value={quote.id} />
+                <Button type="submit" className="rounded-sm">
+                  Create job
+                </Button>
+                <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
+                  Creates an editable job workspace from the frozen sent execution plan. Does not read live quote
+                  execution rows.
+                </p>
+              </form>
+            ) : null}
+            {quote.job ? (
+              <p className="text-xs text-muted-foreground">
+                <Link href={`/app/jobs/${quote.job.id}`} className="font-medium text-primary hover:underline">
+                  Open job
+                </Link>{" "}
+                (#{quote.job.displayNumber}, {formatJobStatus(quote.job.status)}). Job work is managed in the Job
+                Workspace; the quote remains frozen.
+              </p>
+            ) : null}
+            {quote.acceptedAt ? (
+              <p className="text-xs text-muted-foreground">
+                Accepted recorded {new Date(quote.acceptedAt).toLocaleString()}
+                {quote.activatedAt ? ` · Job activated ${new Date(quote.activatedAt).toLocaleString()}` : ""}.
+              </p>
+            ) : null}
+          </div>
         )}
         <ActionError state={readyState} />
         <ActionError state={sentState} />
+        <ActionError state={acceptState} />
+        <ActionError state={activateState} />
       </div>
 
       <section className="space-y-4 rounded-sm border border-border bg-card/10 p-5">
@@ -414,6 +558,26 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
           ))}
         </ul>
       </section>
+
+      {customerPortal.showSection ? (
+        <StaffPortalLinkPanel
+          quoteId={quote.id}
+          hasActiveToken={customerPortal.hasActiveToken}
+          lastViewedAt={customerPortal.lastViewedAt}
+          canCreateLink={customerPortal.canCreateLink}
+          canRevokeRegenerateLink={customerPortal.canRevokeRegenerateLink}
+        />
+      ) : null}
+
+      {customerPortalSubmissions?.canView ? (
+        <StaffCustomerPortalSubmissionsPanel
+          newCount={customerPortalSubmissions.newCount}
+          submissions={customerPortalSubmissions.items}
+          canManage={customerPortalSubmissions.canManage}
+          canManageJobEvidence={customerPortalSubmissions.canManageJobEvidence ?? false}
+          evidencePromotion={customerPortalSubmissions.evidencePromotion}
+        />
+      ) : null}
 
       <section className="space-y-3 rounded-sm border border-primary/25 bg-primary/5 p-5">
         <h2 className="text-sm font-semibold text-foreground">Internal preview</h2>
@@ -638,6 +802,34 @@ function LineItemsSection({
         </>
       ) : null}
     </section>
+  );
+}
+
+function LineItemExecutionPlanningReadOnly({ line }: { line: QuoteWorkspaceProps["quote"]["lineItems"][number] }) {
+  const stages = [...line.executionStages].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
+  if (stages.length === 0) return null;
+  return (
+    <div className="mt-3 border-t border-border/60 pt-3">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Quoted execution plan</p>
+      <ul className="space-y-3">
+        {stages.map((s) => {
+          const tasks = [...s.tasks].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
+          return (
+            <li key={s.id} className="rounded-sm border border-border/60 bg-background/20 p-2">
+              <p className="text-xs font-medium text-foreground">{s.title}</p>
+              <ul className="mt-2 space-y-2">
+                {tasks.map((t) => (
+                  <li key={t.id} className="border-l-2 border-primary/40 pl-2">
+                    <p className="text-xs text-foreground">{t.title}</p>
+                    <PlannedTaskEvidenceReadOnly dto={t.completionRequirement} />
+                  </li>
+                ))}
+              </ul>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -874,6 +1066,7 @@ function AddLineExecutionTaskForm({
         <Label className="text-xs">Customer label (if visible)</Label>
         <Input name="customerLabel" className="rounded-sm" />
       </div>
+        <PlannedTaskEvidenceRequirementFields />
         <Button type="submit" size="sm" className="rounded-sm md:col-span-2">
           Add task
         </Button>
@@ -938,6 +1131,7 @@ function LineExecutionTaskEditor({
           <Label className="text-xs">Internal notes</Label>
           <Textarea name="internalNotes" defaultValue={task.internalNotes ?? ""} rows={2} className="rounded-sm" />
         </div>
+        <PlannedTaskEvidenceRequirementFields completionRequirement={task.completionRequirement} />
         <Button type="submit" size="sm" className="rounded-sm md:col-span-2">
           Save task
         </Button>
@@ -983,6 +1177,7 @@ function LineItemEditor({
       <div className="rounded-sm border border-border p-4 opacity-80">
         <p className="font-medium text-foreground">{line.title}</p>
         <p className="text-xs text-muted-foreground">{line.lineMode}</p>
+        {line.lineMode !== QuoteLineMode.REMOVED ? <LineItemExecutionPlanningReadOnly line={line} /> : null}
       </div>
     );
   }

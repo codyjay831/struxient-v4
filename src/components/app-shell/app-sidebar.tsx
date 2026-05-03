@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   Banknote,
   Briefcase,
+  Calendar,
   Layers,
   LayoutDashboard,
   Library,
@@ -22,6 +23,7 @@ type NavKey =
   | "work-station"
   | "flowspec"
   | "jobs"
+  | "schedule"
   | "customers"
   | "sales"
   | "work-templates"
@@ -39,7 +41,8 @@ const navItems: {
 }[] = [
   { key: "work-station", label: "Work Station", href: "/app/work-station", icon: LayoutDashboard },
   { key: "flowspec", label: "FlowSpec Builder", icon: Workflow, disabledReason: "Workflow authoring ships in a later release." },
-  { key: "jobs", label: "Jobs", icon: Briefcase, disabledReason: "Job execution surfaces ship in a later release." },
+  { key: "jobs", label: "Jobs", href: "/app/jobs", icon: Briefcase },
+  { key: "schedule", label: "Schedule", href: "/app/schedule", icon: Calendar },
   { key: "customers", label: "Customers", href: "/app/customers", icon: Users },
   { key: "sales", label: "Sales", href: "/app/sales/opportunities", icon: Target },
   { key: "work-templates", label: "Work templates", href: "/app/sales/templates", icon: Layers },

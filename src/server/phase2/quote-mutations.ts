@@ -14,6 +14,7 @@ import {
 import type { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { canAuthorQuotes } from "@/lib/phase2-permissions";
+import { isQuoteStructurallyLocked } from "@/lib/quote-lifecycle";
 import { ActivityEventType } from "@/server/phase1/activity-events";
 import type { OrgSessionContext } from "@/server/phase1/org-session";
 import { recordBusinessActivity } from "@/server/phase1/record-activity";
@@ -55,9 +56,13 @@ import {
   updateQuoteTaskSchema,
   updateQuoteTaskStatusSchema,
 } from "@/server/phase2/validation";
+import {
+  quoteLineExecutionCompletionJsonFromForm,
+  validateQuoteLineTasksCompletionRequirementsForSend,
+} from "@/server/phase14/quote-completion-requirements";
 
 export type QuoteActionResult =
-  | { ok: true; quoteId?: string; opportunityId?: string }
+  | { ok: true; quoteId?: string; opportunityId?: string; jobId?: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
 export function zodActionFailure(error: ZodError): { error: string; fieldErrors: Record<string, string[]> } {
@@ -199,7 +204,7 @@ export async function quoteMutationUpdateQuote(ctx: OrgSessionContext, formData:
     return { ok: false, error: "Quote not found." };
   }
 
-  if (existing.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(existing.status)) {
     const parsed = updateQuoteInternalNotesSchema.safeParse({
       quoteId: formData.get("quoteId"),
       internalNotes: formData.get("internalNotes"),
@@ -297,7 +302,7 @@ export async function quoteMutationAddLineItem(ctx: OrgSessionContext, formData:
     where: { id: parsed.data.quoteId, organizationId: ctx.organizationId },
   });
   if (!quote) return { ok: false, error: "Quote not found." };
-  if (quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -382,7 +387,7 @@ export async function quoteMutationUpdateLineItem(ctx: OrgSessionContext, formDa
     include: { quote: true },
   });
   if (!line) return { ok: false, error: "Line item not found." };
-  if (line.quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(line.quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -452,7 +457,7 @@ export async function quoteMutationMarkLineRemoved(ctx: OrgSessionContext, formD
     include: { quote: true },
   });
   if (!line) return { ok: false, error: "Line item not found." };
-  if (line.quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(line.quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -505,7 +510,7 @@ export async function quoteMutationAddTask(ctx: OrgSessionContext, formData: For
     where: { id: parsed.data.quoteId, organizationId: ctx.organizationId },
   });
   if (!quote) return { ok: false, error: "Quote not found." };
-  if (quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -572,7 +577,7 @@ export async function quoteMutationUpdateTask(ctx: OrgSessionContext, formData: 
     include: { quote: true },
   });
   if (!task) return { ok: false, error: "Task not found." };
-  if (task.quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(task.quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -624,7 +629,7 @@ export async function quoteMutationUpdateTaskStatus(ctx: OrgSessionContext, form
     include: { quote: true },
   });
   if (!task) return { ok: false, error: "Task not found." };
-  if (task.quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(task.quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -679,7 +684,7 @@ export async function quoteMutationAddLineExecutionStage(
     include: { quote: true },
   });
   if (!line) return { ok: false, error: "Line item not found." };
-  if (line.quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(line.quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -744,7 +749,7 @@ export async function quoteMutationUpdateLineExecutionStage(
   if (stage.quoteLineItem.quoteId !== parsed.data.quoteId) {
     return { ok: false, error: "Stage not found." };
   }
-  if (stage.quoteLineItem.quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(stage.quoteLineItem.quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -793,7 +798,7 @@ export async function quoteMutationRemoveLineExecutionStage(
   if (!stage || stage.quoteLineItem.quoteId !== parsed.data.quoteId) {
     return { ok: false, error: "Stage not found." };
   }
-  if (stage.quoteLineItem.quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(stage.quoteLineItem.quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -822,6 +827,12 @@ export async function quoteMutationAddLineExecutionTask(
     return { ok: false, error: "You do not have permission." };
   }
 
+  const minRaw = formData.get("minAcceptedEvidenceCount");
+  const minParsed =
+    minRaw === null || minRaw === undefined || minRaw === ""
+      ? 1
+      : Number(typeof minRaw === "string" ? minRaw : String(minRaw));
+
   const parsed = addQuoteLineExecutionTaskSchema.safeParse({
     quoteId: formData.get("quoteId"),
     stageId: formData.get("stageId"),
@@ -833,6 +844,10 @@ export async function quoteMutationAddLineExecutionTask(
     customerVisible: formData.get("customerVisible") === "on" || formData.get("customerVisible") === "true",
     customerLabel: formData.get("customerLabel") || null,
     internalNotes: formData.get("internalNotes") || null,
+    evidenceRequired: formData.get("evidenceRequired") === "on" || formData.get("evidenceRequired") === "true",
+    minAcceptedEvidenceCount: minParsed,
+    allowJobLevelEvidence:
+      formData.get("allowJobLevelEvidence") === "on" || formData.get("allowJobLevelEvidence") === "true",
   });
   if (!parsed.success) {
     return { ok: false, ...zodActionFailure(parsed.error) };
@@ -845,7 +860,7 @@ export async function quoteMutationAddLineExecutionTask(
   if (!stage || stage.quoteLineItem.quoteId !== parsed.data.quoteId) {
     return { ok: false, error: "Stage not found." };
   }
-  if (stage.quoteLineItem.quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(stage.quoteLineItem.quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -854,6 +869,17 @@ export async function quoteMutationAddLineExecutionTask(
     _max: { sortOrder: true },
   });
   const sortOrder = (maxSort._max.sortOrder ?? -1) + 1;
+
+  let completionRequirementsJson: Prisma.InputJsonValue | typeof Prisma.JsonNull;
+  try {
+    completionRequirementsJson = quoteLineExecutionCompletionJsonFromForm({
+      evidenceRequired: parsed.data.evidenceRequired,
+      minAcceptedEvidenceCount: parsed.data.minAcceptedEvidenceCount,
+      allowJobLevelEvidence: parsed.data.allowJobLevelEvidence,
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Invalid evidence requirement." };
+  }
 
   const task = await prisma.quoteLineExecutionTask.create({
     data: {
@@ -868,6 +894,7 @@ export async function quoteMutationAddLineExecutionTask(
       customerVisible: Boolean(parsed.data.customerVisible),
       customerLabel: parsed.data.customerLabel?.trim() ? parsed.data.customerLabel : null,
       internalNotes: parsed.data.internalNotes?.trim() ? parsed.data.internalNotes : null,
+      completionRequirementsJson,
     },
   });
 
@@ -893,6 +920,12 @@ export async function quoteMutationUpdateLineExecutionTask(
     return { ok: false, error: "You do not have permission." };
   }
 
+  const minRawUp = formData.get("minAcceptedEvidenceCount");
+  const minParsedUp =
+    minRawUp === null || minRawUp === undefined || minRawUp === ""
+      ? 1
+      : Number(typeof minRawUp === "string" ? minRawUp : String(minRawUp));
+
   const parsed = updateQuoteLineExecutionTaskSchema.safeParse({
     quoteId: formData.get("quoteId"),
     stageId: formData.get("stageId"),
@@ -905,6 +938,10 @@ export async function quoteMutationUpdateLineExecutionTask(
     customerVisible: formData.get("customerVisible") === "on" || formData.get("customerVisible") === "true",
     customerLabel: formData.get("customerLabel") || null,
     internalNotes: formData.get("internalNotes") || null,
+    evidenceRequired: formData.get("evidenceRequired") === "on" || formData.get("evidenceRequired") === "true",
+    minAcceptedEvidenceCount: minParsedUp,
+    allowJobLevelEvidence:
+      formData.get("allowJobLevelEvidence") === "on" || formData.get("allowJobLevelEvidence") === "true",
   });
   if (!parsed.success) {
     return { ok: false, ...zodActionFailure(parsed.error) };
@@ -917,8 +954,19 @@ export async function quoteMutationUpdateLineExecutionTask(
   if (!task || task.stage.quoteLineItem.quoteId !== parsed.data.quoteId) {
     return { ok: false, error: "Task not found." };
   }
-  if (task.stage.quoteLineItem.quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(task.stage.quoteLineItem.quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
+  }
+
+  let completionRequirementsJson: Prisma.InputJsonValue | typeof Prisma.JsonNull;
+  try {
+    completionRequirementsJson = quoteLineExecutionCompletionJsonFromForm({
+      evidenceRequired: parsed.data.evidenceRequired,
+      minAcceptedEvidenceCount: parsed.data.minAcceptedEvidenceCount,
+      allowJobLevelEvidence: parsed.data.allowJobLevelEvidence,
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Invalid evidence requirement." };
   }
 
   await prisma.quoteLineExecutionTask.update({
@@ -932,6 +980,7 @@ export async function quoteMutationUpdateLineExecutionTask(
       customerVisible: Boolean(parsed.data.customerVisible),
       customerLabel: parsed.data.customerLabel?.trim() ? parsed.data.customerLabel : null,
       internalNotes: parsed.data.internalNotes?.trim() ? parsed.data.internalNotes : null,
+      completionRequirementsJson,
     },
   });
 
@@ -973,7 +1022,7 @@ export async function quoteMutationUpdateLineExecutionTaskStatus(
   if (!task || task.stage.quoteLineItem.quoteId !== parsed.data.quoteId) {
     return { ok: false, error: "Task not found." };
   }
-  if (task.stage.quoteLineItem.quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(task.stage.quoteLineItem.quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -1021,7 +1070,7 @@ export async function quoteMutationAddAssumption(ctx: OrgSessionContext, formDat
     where: { id: parsed.data.quoteId, organizationId: ctx.organizationId },
   });
   if (!quote) return { ok: false, error: "Quote not found." };
-  if (quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -1089,7 +1138,7 @@ export async function quoteMutationUpdateAssumption(ctx: OrgSessionContext, form
     include: { quote: true },
   });
   if (!row) return { ok: false, error: "Assumption not found." };
-  if (row.quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(row.quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -1146,7 +1195,7 @@ export async function quoteMutationRemoveAssumption(ctx: OrgSessionContext, form
     include: { quote: true },
   });
   if (!row) return { ok: false, error: "Assumption not found." };
-  if (row.quote.status === QuoteStatus.SENT) {
+  if (isQuoteStructurallyLocked(row.quote.status)) {
     return { ok: false, error: "Sent quotes cannot be edited." };
   }
 
@@ -1178,8 +1227,8 @@ export async function quoteMutationMarkReadyToSend(ctx: OrgSessionContext, formD
 
   const bundle = await getQuoteReadinessBundle(ctx.organizationId, parsed.data.quoteId);
   if (!bundle) return { ok: false, error: "Quote not found." };
-  if (bundle.status === QuoteStatus.SENT) {
-    return { ok: false, error: "Quote is already sent." };
+  if (isQuoteStructurallyLocked(bundle.status)) {
+    return { ok: false, error: "Quote is already locked after send; status cannot be changed from here." };
   }
 
   const items = evaluateQuoteSendReadiness({
@@ -1240,8 +1289,8 @@ export async function quoteMutationMarkSent(ctx: OrgSessionContext, formData: Fo
 
   const full = await getQuoteWorkspace(ctx.organizationId, parsed.data.quoteId);
   if (!full) return { ok: false, error: "Quote not found." };
-  if (full.status === QuoteStatus.SENT) {
-    return { ok: false, error: "Quote is already sent." };
+  if (isQuoteStructurallyLocked(full.status)) {
+    return { ok: false, error: "Quote is already sent or in post-send workflow." };
   }
 
   const items = evaluateQuoteSendReadiness({
@@ -1258,6 +1307,11 @@ export async function quoteMutationMarkSent(ctx: OrgSessionContext, formData: Fo
       ok: false,
       error: `Cannot send: ${blockers.map((b) => b.label).join("; ") || "resolve blockers"}.`,
     };
+  }
+
+  const completionSend = validateQuoteLineTasksCompletionRequirementsForSend(full.lineItems);
+  if (!completionSend.ok) {
+    return { ok: false, error: completionSend.error };
   }
 
   const sentAt = new Date();

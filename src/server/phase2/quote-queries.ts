@@ -34,6 +34,7 @@ export const quoteWorkspaceInclude = {
   assumptions: { orderBy: { sortOrder: "asc" as const } },
   createdBy: { select: { id: true, name: true, email: true } },
   owner: { select: { id: true, name: true, email: true } },
+  job: { select: { id: true, displayNumber: true, status: true } },
 } satisfies Prisma.QuoteInclude;
 
 export type QuoteWorkspacePayload = Prisma.QuoteGetPayload<{ include: typeof quoteWorkspaceInclude }>;

@@ -1,6 +1,8 @@
 import { PricingMode, QuoteLineMode, QuoteWorkTemplateKind } from "@prisma/client";
 import { z } from "zod";
 
+import { parseJobTaskCompletionRequirements } from "@/server/phase13/completion-requirements";
+
 /** Stored in `QuoteWorkTemplate.payloadJson` when `payloadVersion === 1`. */
 export const TEMPLATE_PAYLOAD_VERSION = 1 as const;
 
@@ -34,7 +36,7 @@ export const templateTagsSchema = z
   .default([])
   .transform((arr) => arr.map((t) => t.trim()).filter(Boolean));
 
-export const templateExecutionTaskPayloadSchema = z.object({
+const templateExecutionTaskPayloadFieldsSchema = z.object({
   title: nonEmptyTrimmed.max(500),
   description: optionalText,
   isRequired: z.boolean().optional().default(false),
@@ -49,7 +51,34 @@ export const templateExecutionTaskPayloadSchema = z.object({
   customerVisible: z.boolean().optional().default(false),
   customerLabel: optionalShortText,
   internalNotes: optionalText,
+  /** Optional strict v1 evidence gate; omitted when absent or logically cleared. */
+  completionRequirementsJson: z.unknown().optional().nullable(),
 });
+
+export const templateExecutionTaskPayloadSchema = templateExecutionTaskPayloadFieldsSchema
+  .superRefine((data, ctx) => {
+    const raw = data.completionRequirementsJson;
+    if (raw === undefined || raw === null) return;
+    const p = parseJobTaskCompletionRequirements(raw);
+    if (p.kind === "invalid") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: p.reason,
+        path: ["completionRequirementsJson"],
+      });
+    }
+  })
+  .transform((data) => {
+    const { completionRequirementsJson, ...rest } = data;
+    if (completionRequirementsJson === undefined || completionRequirementsJson === null) {
+      return rest;
+    }
+    const p = parseJobTaskCompletionRequirements(completionRequirementsJson);
+    if (p.kind === "none" || p.kind === "invalid") {
+      return rest;
+    }
+    return { ...rest, completionRequirementsJson: p.v1 };
+  });
 
 export type TemplateExecutionTaskPayload = z.infer<typeof templateExecutionTaskPayloadSchema>;
 

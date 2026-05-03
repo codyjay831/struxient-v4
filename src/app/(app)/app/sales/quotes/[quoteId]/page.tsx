@@ -1,13 +1,31 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CustomerPortalSubmissionType, QuoteStatus } from "@prisma/client";
+import { canCreateCustomerPortalLink, canRevokeOrRegenerateCustomerPortalLink } from "@/lib/phase8-permissions";
 import { canAuthorQuotes } from "@/lib/phase2-permissions";
 import { canManageQuoteWorkTemplates } from "@/lib/phase3-permissions";
 import { requireOrgSession } from "@/server/phase1/org-session";
 import { listOrganizationMembers } from "@/server/phase1/queries";
-import { getQuotePreviewForWorkspace } from "@/server/phase2/customer-preview";
+import { getQuotePreviewForWorkspace, parseSentSnapshotPreviewDto } from "@/server/phase2/customer-preview";
+import {
+  parseJobTaskCompletionRequirements,
+  toCompletionRequirementDto,
+} from "@/server/phase13/completion-requirements";
 import { allQuoteSendBlockersPass, evaluateQuoteSendReadiness } from "@/server/phase2/quote-readiness";
 import { getQuoteIdInOrganization, getQuoteWorkspace, listQuoteActivity } from "@/server/phase2/quote-queries";
 import { listActiveQuoteWorkTemplatesGrouped } from "@/server/phase3/template-queries";
+import { findActivePortalTokenForQuote } from "@/server/phase8/portal-token-queries";
+import { canManageCustomerPortalSubmissions, canViewCustomerPortalSubmissions } from "@/lib/phase9-permissions";
+import {
+  countNewCustomerPortalSubmissionsForQuote,
+  listCustomerPortalSubmissionsForQuote,
+} from "@/server/phase9/customer-portal-submission-queries";
+import { formatScheduleWindowDisplay } from "@/lib/format-schedule-window";
+import { canManageJobEvidence, canViewJobEvidence } from "@/lib/phase12-permissions";
+import {
+  listJobTasksForEvidencePicker,
+  listPromotionBucketsForAttachmentsOnJob,
+} from "@/server/phase12/job-evidence-queries";
 import { QuoteWorkspace } from "./quote-workspace";
 
 export default async function QuoteWorkspacePage({ params }: { params: Promise<{ quoteId: string }> }) {
@@ -100,6 +118,55 @@ export default async function QuoteWorkspacePage({ params }: { params: Promise<{
     },
   });
 
+  const portalPostSend: QuoteStatus[] = [QuoteStatus.SENT, QuoteStatus.ACCEPTED, QuoteStatus.ACTIVATED];
+  const portalSnapshotOk = parseSentSnapshotPreviewDto(quote.sentSnapshotJson) !== null;
+  const showCustomerPortalSection = portalPostSend.includes(quote.status) && portalSnapshotOk;
+  const activePortalToken = showCustomerPortalSection
+    ? await findActivePortalTokenForQuote(ctx.organizationId, quote.id)
+    : null;
+
+  const portalSubmissionsAccess = canViewCustomerPortalSubmissions(ctx.role);
+  const portalSubmissionsRaw = portalSubmissionsAccess
+    ? await listCustomerPortalSubmissionsForQuote(ctx, quote.id)
+    : [];
+  const portalNewCount = portalSubmissionsAccess
+    ? await countNewCustomerPortalSubmissionsForQuote(ctx, quote.id)
+    : 0;
+
+  const evidenceView = canViewJobEvidence(ctx.role);
+  const evidenceManage = canManageJobEvidence(ctx.role);
+
+  const jobToAttachmentIds = new Map<string, string[]>();
+  if (portalSubmissionsAccess && evidenceView) {
+    for (const s of portalSubmissionsRaw) {
+      if (s.type !== CustomerPortalSubmissionType.FILE_UPLOAD || !s.job?.id) continue;
+      const jid = s.job.id;
+      const cur = jobToAttachmentIds.get(jid) ?? [];
+      for (const a of s.attachments) {
+        cur.push(a.id);
+      }
+      jobToAttachmentIds.set(jid, cur);
+    }
+  }
+  const bucketsFlat: { attachmentId: string; jobId: string; jobTaskId: string | null }[] = [];
+  const taskOptionsByJobId: Record<string, { id: string; title: string }[]> = {};
+  if (portalSubmissionsAccess && evidenceView) {
+    for (const [jid, ids] of jobToAttachmentIds) {
+      const uniq = [...new Set(ids)];
+      if (uniq.length === 0) continue;
+      const part = await listPromotionBucketsForAttachmentsOnJob(ctx, jid, uniq);
+      for (const b of part) {
+        bucketsFlat.push({ attachmentId: b.attachmentId, jobId: jid, jobTaskId: b.jobTaskId });
+      }
+      taskOptionsByJobId[jid] = await listJobTasksForEvidencePicker(ctx, jid);
+    }
+  }
+
+  const evidencePromotionPayload =
+    portalSubmissionsAccess && evidenceView
+      ? { taskOptionsByJobId, buckets: bucketsFlat, quoteIdForRevalidate: quote.id }
+      : undefined;
+
   const payload = {
     organizationName: ctx.organizationName,
     quote: {
@@ -116,6 +183,11 @@ export default async function QuoteWorkspacePage({ params }: { params: Promise<{
       pricingSubtotalCents: quote.pricingSubtotalCents,
       totalCents: quote.totalCents,
       sentAt: quote.sentAt?.toISOString() ?? null,
+      acceptedAt: quote.acceptedAt?.toISOString() ?? null,
+      activatedAt: quote.activatedAt?.toISOString() ?? null,
+      job: quote.job
+        ? { id: quote.job.id, displayNumber: quote.job.displayNumber, status: quote.job.status }
+        : null,
       customerId: quote.customerId,
       opportunityId: quote.opportunityId,
       ownerUserId: quote.ownerUserId,
@@ -167,6 +239,7 @@ export default async function QuoteWorkspacePage({ params }: { params: Promise<{
             customerVisible: t.customerVisible,
             customerLabel: t.customerLabel,
             internalNotes: t.internalNotes,
+            completionRequirement: toCompletionRequirementDto(parseJobTaskCompletionRequirements(t.completionRequirementsJson)),
           })),
         })),
       })),
@@ -204,6 +277,57 @@ export default async function QuoteWorkspacePage({ params }: { params: Promise<{
     previewResolution,
     workTemplates,
     canManageWorkTemplates: canManageQuoteWorkTemplates(ctx.role),
+    customerPortal: {
+      showSection: showCustomerPortalSection,
+      hasActiveToken: Boolean(activePortalToken),
+      lastViewedAt: activePortalToken?.lastViewedAt?.toISOString() ?? null,
+      canCreateLink: canCreateCustomerPortalLink(ctx.role),
+      canRevokeRegenerateLink: canRevokeOrRegenerateCustomerPortalLink(ctx.role),
+    },
+    customerPortalSubmissions: portalSubmissionsAccess
+      ? {
+          canView: true,
+          canManage: canManageCustomerPortalSubmissions(ctx.role),
+          canManageJobEvidence: evidenceManage,
+          evidencePromotion: evidencePromotionPayload,
+          newCount: portalNewCount,
+          items: portalSubmissionsRaw.map((s) => ({
+            id: s.id,
+            type: s.type,
+            status: s.status,
+            subject: s.subject,
+            message: s.message,
+            createdAt: s.createdAt.toISOString(),
+            customerDisplayName: s.customer.displayName.trim(),
+            quoteDisplayNumber: s.quote?.displayNumber ?? null,
+            jobDisplayNumber: s.job?.displayNumber ?? null,
+            jobId: s.job?.id ?? null,
+            visitLabel:
+              s.type === CustomerPortalSubmissionType.APPOINTMENT_CONFIRMATION && s.scheduledWork?.jobTask
+                ? s.scheduledWork.jobTask.customerLabel?.trim() ||
+                  s.scheduledWork.jobTask.title?.trim() ||
+                  null
+                : null,
+            scheduleWindowDisplay:
+              s.type === CustomerPortalSubmissionType.APPOINTMENT_CONFIRMATION && s.scheduledWork
+                ? formatScheduleWindowDisplay(
+                    s.scheduledWork.scheduledStartAt.toISOString(),
+                    s.scheduledWork.scheduledEndAt.toISOString(),
+                  )
+                : null,
+            attachments: s.attachments.map((a) => ({
+              id: a.id,
+              originalFilename: a.originalFilename,
+              sanitizedFilename: a.sanitizedFilename,
+              contentType: a.contentType,
+              detectedContentType: a.detectedContentType,
+              sizeBytes: a.sizeBytes,
+              status: a.status,
+              createdAt: a.createdAt.toISOString(),
+            })),
+          })),
+        }
+      : undefined,
   };
 
   return <QuoteWorkspace {...payload} />;

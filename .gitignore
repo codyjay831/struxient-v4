@@ -18,6 +18,9 @@
 # production
 /build
 
+# local private portal upload storage (dev / tests)
+/.data/
+
 # misc
 .DS_Store
 *.pem

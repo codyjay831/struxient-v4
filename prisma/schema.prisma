@@ -55,8 +55,62 @@ enum QuoteStatus {
   NEEDS_REVIEW
   READY_TO_SEND
   SENT
+  ACCEPTED
+  ACTIVATED
   REVISED
   DECLINED
+}
+
+enum JobStatus {
+  ACTIVE
+  COMPLETED
+  PAUSED
+  CANCELED
+}
+
+enum JobTaskStatus {
+  NOT_STARTED
+  READY
+  IN_PROGRESS
+  COMPLETE
+  BLOCKED
+}
+
+enum ScheduledWorkStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELED
+}
+
+enum ScheduledWorkType {
+  JOB_TASK
+  JOB_VISIT
+}
+
+enum CustomerPortalSubmissionType {
+  GENERAL_REQUEST
+  AVAILABILITY_NOTE
+  APPOINTMENT_CONFIRMATION
+  FILE_UPLOAD
+}
+
+enum CustomerPortalSubmissionAttachmentStatus {
+  STORED
+  REJECTED
+  DELETED
+}
+
+enum CustomerPortalSubmissionStatus {
+  NEW
+  REVIEWED
+  ACTIONED
+  DISMISSED
+}
+
+enum JobEvidenceStatus {
+  CANDIDATE
+  ACCEPTED
+  REJECTED
 }
 
 enum QuoteLineMode {
@@ -149,6 +203,16 @@ model Organization {
   quoteAssumptions             QuoteAssumption[]
   quoteActivityEvents          QuoteActivityEvent[]
   quoteWorkTemplates           QuoteWorkTemplate[]
+  jobs                         Job[]
+  jobLines                     JobLine[]
+  jobStages                    JobStage[]
+  jobTasks                     JobTask[]
+  jobActivityEvents            JobActivityEvent[]
+  scheduledWorks               ScheduledWork[]
+  portalAccessTokens           PortalAccessToken[]
+  customerPortalSubmissions    CustomerPortalSubmission[]
+  customerPortalSubmissionAttachments CustomerPortalSubmissionAttachment[]
+  jobEvidences                 JobEvidence[]
 }
 
 model User {
@@ -168,7 +232,19 @@ model User {
   opportunityActivityEvents OpportunityActivityEvent[] @relation("OpportunityActivityActor")
   quotesCreated             Quote[]                    @relation("QuoteCreatedBy")
   quotesOwned               Quote[]                    @relation("QuoteOwner")
+  quotesAccepted            Quote[]                    @relation("QuoteAcceptedBy")
+  quotesActivated           Quote[]                    @relation("QuoteActivatedBy")
+  jobsActivated             Job[]                      @relation("JobActivatedBy")
   quoteWorkTemplatesCreated QuoteWorkTemplate[]        @relation("QuoteWorkTemplateCreatedBy")
+  jobActivityEventsActed    JobActivityEvent[]         @relation("JobActivityActor")
+  jobTasksLastStatusChanged JobTask[]                  @relation("JobTaskLastStatusChangedBy")
+  jobTasksCompleted         JobTask[]                  @relation("JobTaskCompletedBy")
+  scheduledWorksCreated     ScheduledWork[]            @relation("ScheduledWorkCreatedBy")
+  scheduledWorksCanceled    ScheduledWork[]            @relation("ScheduledWorkCanceledBy")
+  portalAccessTokensCreated PortalAccessToken[]        @relation("PortalAccessTokenCreatedBy")
+  reviewedPortalSubmissions CustomerPortalSubmission[] @relation("PortalSubmissionReviewedBy")
+  jobEvidencePromoted        JobEvidence[]             @relation("JobEvidencePromotedBy")
+  jobEvidenceReviewed        JobEvidence[]             @relation("JobEvidenceReviewedBy")
 }
 
 model Membership {
@@ -250,6 +326,9 @@ model Customer {
   opportunities  Opportunity[]
   activityEvents OpportunityActivityEvent[]
   quotes           Quote[]
+  jobs             Job[]
+  portalAccessTokens         PortalAccessToken[]
+  customerPortalSubmissions  CustomerPortalSubmission[]
 
   @@index([organizationId])
   @@index([organizationId, updatedAt])
@@ -303,6 +382,7 @@ model Opportunity {
   tasks          OpportunityTask[]
   activityEvents OpportunityActivityEvent[]
   quotes         Quote[]
+  jobs           Job[]
 
   @@index([organizationId])
   @@index([organizationId, customerId])
@@ -328,6 +408,10 @@ model Quote {
   totalCents           Int?
   sentAt               DateTime?
   sentSnapshotJson     Json?
+  acceptedAt           DateTime?
+  acceptedByUserId     String?
+  activatedAt          DateTime?
+  activatedByUserId    String?
   createdById          String
   ownerUserId          String?
   createdAt            DateTime      @default(now())
@@ -338,11 +422,18 @@ model Quote {
   opportunity  Opportunity  @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
   createdBy    User         @relation("QuoteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   owner        User?        @relation("QuoteOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  acceptedBy   User?        @relation("QuoteAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+  activatedBy  User?        @relation("QuoteActivatedBy", fields: [activatedByUserId], references: [id], onDelete: SetNull)
+  /// Denormalized link to Job.id after activation (same row as `job` via Job.quoteId).
+  jobId        String?      @unique
+  job          Job?
 
   lineItems    QuoteLineItem[]
   tasks        QuoteTask[]
   assumptions  QuoteAssumption[]
   activityEvents QuoteActivityEvent[]
+  portalAccessTokens           PortalAccessToken[]
+  customerPortalSubmissions    CustomerPortalSubmission[]
 
   @@unique([organizationId, displayNumber])
   @@index([organizationId])
@@ -350,6 +441,320 @@ model Quote {
   @@index([organizationId, customerId])
   @@index([organizationId, status])
   @@index([organizationId, updatedAt])
+}
+
+model Job {
+  id                 String    @id @default(cuid())
+  organizationId     String
+  quoteId            String    @unique
+  customerId         String
+  opportunityId      String?
+  displayNumber      Int
+  title              String
+  status             JobStatus @default(ACTIVE)
+  sourceSnapshotJson Json
+  activatedAt        DateTime
+  activatedByUserId  String?
+  /// Pause/cancel context; cleared on resume (when it held pause note) and on complete.
+  statusReason       String?   @db.Text
+  pausedAt           DateTime?
+  completedAt        DateTime?
+  canceledAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote         Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  activatedBy   User?        @relation("JobActivatedBy", fields: [activatedByUserId], references: [id], onDelete: SetNull)
+  lines         JobLine[]
+  stages         JobStage[]
+  tasks          JobTask[]
+  activityEvents JobActivityEvent[]
+  scheduledWorks             ScheduledWork[]
+  portalAccessTokens         PortalAccessToken[]
+  customerPortalSubmissions  CustomerPortalSubmission[]
+  jobEvidences               JobEvidence[]
+
+  @@unique([organizationId, displayNumber])
+  @@index([organizationId])
+  @@index([organizationId, customerId])
+  @@index([organizationId, quoteId])
+  @@index([organizationId, status])
+}
+
+/// Append-only staff job history. Never expose in customer-facing projections.
+model JobActivityEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+  jobId          String
+  actorUserId    String?
+  eventType      String
+  summary        String   @db.Text
+  payloadJson    Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  job          Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  actorUser    User?        @relation("JobActivityActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, jobId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, jobId, createdAt])
+}
+
+model JobLine {
+  id                    String   @id @default(cuid())
+  organizationId        String
+  jobId                 String
+  sourceQuoteLineItemId String?
+  title                 String
+  customerDescription   String?  @db.Text
+  sortOrder             Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  job          Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stages       JobStage[]
+  tasks        JobTask[]
+
+  @@index([organizationId])
+  @@index([organizationId, jobId])
+}
+
+model JobStage {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  jobId              String
+  jobLineId          String
+  sourceQuoteStageId String?
+  title              String
+  sortOrder          Int      @default(0)
+  internalNotes      String?  @db.Text
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  job          Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobLine      JobLine      @relation(fields: [jobLineId], references: [id], onDelete: Cascade)
+  tasks        JobTask[]
+
+  @@index([organizationId])
+  @@index([organizationId, jobId])
+  @@index([organizationId, jobLineId])
+}
+
+model JobTask {
+  id                         String        @id @default(cuid())
+  organizationId             String
+  jobId                      String
+  jobLineId                  String
+  jobStageId                 String
+  sourceQuoteTaskId          String?
+  title                      String
+  description                String?       @db.Text
+  status                     JobTaskStatus @default(NOT_STARTED)
+  isRequired                 Boolean       @default(false)
+  sortOrder                  Int           @default(0)
+  assignedRole               String?
+  estimatedDurationMinutes   Int?
+  customerVisible            Boolean       @default(false)
+  customerLabel              String?
+  internalNotes              String?       @db.Text
+  blockedReason              String?       @db.Text
+  lastStatusChangedAt        DateTime?
+  lastStatusChangedByUserId  String?
+  completedAt                DateTime?
+  completedByUserId          String?
+  completionRequirementsJson Json?
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
+
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  job                Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobLine            JobLine      @relation(fields: [jobLineId], references: [id], onDelete: Cascade)
+  jobStage           JobStage     @relation(fields: [jobStageId], references: [id], onDelete: Cascade)
+  lastStatusChangedBy User?     @relation("JobTaskLastStatusChangedBy", fields: [lastStatusChangedByUserId], references: [id], onDelete: SetNull)
+  completedBy         User?     @relation("JobTaskCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
+  scheduledWorks      ScheduledWork[]
+  jobEvidences        JobEvidence[]
+
+  @@index([organizationId])
+  @@index([organizationId, jobId])
+  @@index([organizationId, jobStageId])
+}
+
+/// Staff-controlled job evidence (promoted from portal intake or future sources). Not customer-trusted until accepted.
+model JobEvidence {
+  id                 String            @id @default(cuid())
+  organizationId     String
+  jobId              String
+  jobTaskId          String?
+  sourceAttachmentId String?
+  status             JobEvidenceStatus @default(CANDIDATE)
+  title              String
+  description        String?           @db.Text
+  promotedByUserId   String?
+  promotedAt         DateTime          @default(now())
+  reviewedByUserId   String?
+  reviewedAt         DateTime?
+  rejectionReason    String?           @db.Text
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  organization     Organization                       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  job              Job                                @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobTask          JobTask?                           @relation(fields: [jobTaskId], references: [id], onDelete: SetNull)
+  sourceAttachment CustomerPortalSubmissionAttachment? @relation(fields: [sourceAttachmentId], references: [id], onDelete: SetNull)
+  promotedBy       User?                              @relation("JobEvidencePromotedBy", fields: [promotedByUserId], references: [id], onDelete: SetNull)
+  reviewedBy       User?                              @relation("JobEvidenceReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, jobId])
+  @@index([organizationId, jobTaskId])
+  @@index([organizationId, status])
+  @@index([organizationId, sourceAttachmentId])
+}
+
+/// Time window for job execution work. Readiness is derived from Job/JobTask facts — not stored here.
+model ScheduledWork {
+  id               String              @id @default(cuid())
+  organizationId   String
+  jobId            String
+  jobTaskId        String
+  type             ScheduledWorkType   @default(JOB_TASK)
+  status           ScheduledWorkStatus @default(SCHEDULED)
+  title            String
+  scheduledStartAt DateTime
+  scheduledEndAt   DateTime
+  notes            String?             @db.Text
+  createdByUserId  String?
+  canceledAt       DateTime?
+  canceledByUserId String?
+  cancelReason     String?             @db.Text
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  job          Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobTask      JobTask      @relation(fields: [jobTaskId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("ScheduledWorkCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  canceledBy   User?       @relation("ScheduledWorkCanceledBy", fields: [canceledByUserId], references: [id], onDelete: SetNull)
+  customerPortalSubmissions CustomerPortalSubmission[]
+
+  @@index([organizationId])
+  @@index([organizationId, scheduledStartAt])
+  @@index([organizationId, jobId])
+  @@index([organizationId, jobTaskId])
+  @@index([organizationId, status])
+}
+
+/// Customer portal capability: raw token is never stored; only SHA-256 hash of the high-entropy secret.
+model PortalAccessToken {
+  id              String    @id @default(cuid())
+  organizationId  String
+  customerId      String
+  quoteId         String
+  jobId           String?
+  tokenHash       String    @unique
+  label           String?
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  createdByUserId String?
+  lastViewedAt    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  quote        Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  job          Job?         @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  createdBy    User?        @relation("PortalAccessTokenCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  submissions  CustomerPortalSubmission[]
+
+  @@index([organizationId])
+  @@index([organizationId, customerId])
+  @@index([organizationId, quoteId])
+  @@index([organizationId, jobId])
+}
+
+/// DB-backed rate limits for unauthenticated portal POST actions. `key` is derived from portal token hash, never raw token.
+model PortalActionRateLimit {
+  id          String   @id @default(cuid())
+  key         String
+  action      String
+  windowStart DateTime
+  count       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([key, action, windowStart])
+  @@index([key])
+  @@index([windowStart])
+}
+
+/// Customer-originated portal notes. Source of review truth; not a chat thread.
+model CustomerPortalSubmission {
+  id                   String                         @id @default(cuid())
+  organizationId       String
+  customerId           String
+  quoteId              String?
+  jobId                String?
+  scheduledWorkId      String?
+  portalAccessTokenId  String?
+  type                 CustomerPortalSubmissionType
+  status               CustomerPortalSubmissionStatus @default(NEW)
+  subject              String?
+  message              String                         @db.Text
+  payloadJson          Json?
+  reviewedAt           DateTime?
+  reviewedByUserId     String?
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer           Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  quote              Quote?              @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  job                Job?                @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  scheduledWork      ScheduledWork?      @relation(fields: [scheduledWorkId], references: [id], onDelete: SetNull)
+  portalAccessToken  PortalAccessToken?  @relation(fields: [portalAccessTokenId], references: [id], onDelete: SetNull)
+  reviewedBy         User?               @relation("PortalSubmissionReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  attachments        CustomerPortalSubmissionAttachment[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, jobId])
+  @@index([organizationId, quoteId])
+  @@index([organizationId, customerId])
+  @@index([organizationId, createdAt])
+}
+
+/// Customer portal file intake. Binary bytes live in private object storage; `storageKey` is internal-only.
+model CustomerPortalSubmissionAttachment {
+  id                   String                                   @id @default(cuid())
+  organizationId       String
+  submissionId         String
+  storageKey           String
+  originalFilename     String
+  sanitizedFilename    String?
+  contentType          String
+  detectedContentType  String?
+  sizeBytes            Int
+  checksumSha256       String?
+  status               CustomerPortalSubmissionAttachmentStatus @default(STORED)
+  createdAt            DateTime                                 @default(now())
+  updatedAt            DateTime                                 @updatedAt
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  submission   CustomerPortalSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  jobEvidences JobEvidence[]
+
+  @@index([organizationId])
+  @@index([organizationId, submissionId])
+  @@index([organizationId, status])
 }
 
 model QuoteLineItem {
@@ -441,6 +846,8 @@ model QuoteLineExecutionTask {
   customerVisible          Boolean         @default(false)
   customerLabel            String?
   internalNotes            String?         @db.Text
+  /// Planned runtime completion gate (strict v1 JSON). Frozen into sent snapshot; not customer-facing.
+  completionRequirementsJson Json?
   createdAt                DateTime        @default(now())
   updatedAt                DateTime        @updatedAt
 
