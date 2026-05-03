@@ -38,6 +38,8 @@ import {
   quoteMutationUpdateLineExecutionTaskStatus,
   quoteMutationUpdateLineItem,
   quoteMutationUpdateQuote,
+  quoteMutationUpdateQuoteDraftBasics,
+  quoteMutationUpdateQuoteDraftProposal,
   quoteMutationUpdateTask,
   quoteMutationUpdateTaskStatus,
 } from "@/server/phase2/quote-mutations";
@@ -772,6 +774,78 @@ describe("Phase 2 quote mutations (integration)", () => {
     );
 
     deny("mark ready again", await quoteMutationMarkReadyToSend(salesCtxA, fd({ quoteId })));
+
+    await prisma.quote.deleteMany({ where: { opportunityId: opp.id } });
+    await prisma.opportunity.delete({ where: { id: opp.id } });
+  });
+
+  it("updateQuoteDraftBasics and updateQuoteDraftProposal update disjoint fields", async () => {
+    const opp = await prisma.opportunity.create({
+      data: {
+        organizationId: orgAId,
+        customerId: customerAId,
+        title: `Opp split mut ${suffix}`,
+        serviceType: "Remodel",
+        source: "test",
+        status: OpportunityStatus.NEW,
+        priority: OpportunityPriority.NORMAL,
+        serviceAddressTbd: true,
+        scopeIntent: "Scope",
+      },
+    });
+    await prisma.opportunityTask.create({
+      data: {
+        opportunityId: opp.id,
+        title: "Opt",
+        kind: OpportunityTaskKind.INTAKE,
+        status: OpportunityTaskStatus.NOT_READY,
+        isRequired: false,
+      },
+    });
+    const draft = await quoteMutationCreateDraftFromOpportunity(salesCtxA, opp.id);
+    expect(draft.ok).toBe(true);
+    if (!draft.ok) return;
+    const quoteId = draft.quoteId;
+
+    const row0 = await prisma.quote.findUniqueOrThrow({ where: { id: quoteId } });
+    const intro0 = row0.customerFacingIntro;
+    const summary0 = row0.scopeSummary;
+
+    const basics = await quoteMutationUpdateQuoteDraftBasics(
+      salesCtxA,
+      fd({
+        quoteId,
+        title: "Updated title only",
+        serviceAddressText: "",
+        serviceAddressTbd: "true",
+        scopeIntent: "Updated intent",
+        internalNotes: "Notes from basics",
+        status: QuoteStatus.DRAFT,
+        ownerUserId: "",
+      }),
+    );
+    expect(basics.ok).toBe(true);
+
+    const row1 = await prisma.quote.findUniqueOrThrow({ where: { id: quoteId } });
+    expect(row1.title).toBe("Updated title only");
+    expect(row1.scopeIntent).toBe("Updated intent");
+    expect(row1.customerFacingIntro).toBe(intro0);
+    expect(row1.scopeSummary).toBe(summary0);
+
+    const prop = await quoteMutationUpdateQuoteDraftProposal(
+      salesCtxA,
+      fd({
+        quoteId,
+        scopeSummary: "Summary text",
+        customerFacingIntro: "Intro text",
+      }),
+    );
+    expect(prop.ok).toBe(true);
+
+    const row2 = await prisma.quote.findUniqueOrThrow({ where: { id: quoteId } });
+    expect(row2.scopeSummary).toContain("Summary");
+    expect(row2.customerFacingIntro).toContain("Intro");
+    expect(row2.title).toBe("Updated title only");
 
     await prisma.quote.deleteMany({ where: { opportunityId: opp.id } });
     await prisma.opportunity.delete({ where: { id: opp.id } });

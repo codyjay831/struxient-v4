@@ -54,6 +54,53 @@ export const updateQuoteDraftSchema = z
     }
   });
 
+/** Draft quote: title, internal scope, service location, pipeline, owner — not customer proposal text. */
+export const updateQuoteDraftBasicsSchema = z
+  .object({
+    quoteId: nonEmptyId,
+    title: z.string().trim().min(1, "Title is required").max(300),
+    serviceAddressText: z.string().max(2000).optional().nullable(),
+    serviceAddressTbd: z.coerce.boolean(),
+    scopeIntent: z.string().trim().min(1, "Scope intent is required").max(10_000),
+    internalNotes: z.string().trim().max(10_000).optional().nullable(),
+    status: z.nativeEnum(QuoteStatus).optional(),
+    ownerUserId: z.string().trim().optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.serviceAddressTbd) {
+      const t = data.serviceAddressText?.trim() ?? "";
+      if (t.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Enter a service address or mark location as not yet determined.",
+          path: ["serviceAddressText"],
+        });
+      }
+    }
+    if (data.status) {
+      const allowed: QuoteStatus[] = [
+        QuoteStatus.DRAFT,
+        QuoteStatus.MISSING_INFO,
+        QuoteStatus.NEEDS_REVIEW,
+        QuoteStatus.READY_TO_SEND,
+      ];
+      if (!allowed.includes(data.status)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Use Mark ready or Mark sent actions for status changes from this form.",
+          path: ["status"],
+        });
+      }
+    }
+  });
+
+/** Draft quote: customer-facing proposal copy (not frozen until send). */
+export const updateQuoteDraftProposalSchema = z.object({
+  quoteId: nonEmptyId,
+  scopeSummary: z.string().trim().max(10_000).optional().nullable(),
+  customerFacingIntro: z.string().trim().max(10_000).optional().nullable(),
+});
+
 export const updateQuoteInternalNotesSchema = z.object({
   quoteId: nonEmptyId,
   internalNotes: z.string().trim().max(10_000).optional().nullable(),

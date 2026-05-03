@@ -47,6 +47,8 @@ import {
   removeQuoteAssumptionSchema,
   removeQuoteLineExecutionStageSchema,
   updateQuoteAssumptionSchema,
+  updateQuoteDraftBasicsSchema,
+  updateQuoteDraftProposalSchema,
   updateQuoteDraftSchema,
   updateQuoteInternalNotesSchema,
   updateQuoteLineExecutionStageSchema,
@@ -273,6 +275,123 @@ export async function quoteMutationUpdateQuote(ctx: OrgSessionContext, formData:
     actorUserId: ctx.userId,
     eventType: QuoteActivityEventType.QUOTE_UPDATED,
     summary: "Quote updated",
+    payload: { quoteId: existing.id },
+  });
+
+  return { ok: true, quoteId: existing.id };
+}
+
+export async function quoteMutationUpdateQuoteDraftBasics(
+  ctx: OrgSessionContext,
+  formData: FormData,
+): Promise<QuoteActionResult> {
+  if (!canAuthorQuotes(ctx.role)) {
+    return { ok: false, error: "You do not have permission to edit quotes." };
+  }
+
+  const quoteId = String(formData.get("quoteId") ?? "");
+  const existing = await prisma.quote.findFirst({
+    where: { id: quoteId, organizationId: ctx.organizationId },
+  });
+  if (!existing) {
+    return { ok: false, error: "Quote not found." };
+  }
+
+  if (isQuoteStructurallyLocked(existing.status)) {
+    return { ok: false, error: "Quote basics are locked after send. Only internal notes can be updated from the header form." };
+  }
+
+  const parsed = updateQuoteDraftBasicsSchema.safeParse({
+    quoteId: formData.get("quoteId"),
+    title: formData.get("title"),
+    serviceAddressText: formData.get("serviceAddressText") || null,
+    serviceAddressTbd: formData.get("serviceAddressTbd") === "on" || formData.get("serviceAddressTbd") === "true",
+    scopeIntent: formData.get("scopeIntent"),
+    internalNotes: formData.get("internalNotes") || null,
+    status: formData.get("status") || undefined,
+    ownerUserId: formData.get("ownerUserId") || null,
+  });
+  if (!parsed.success) {
+    return { ok: false, ...zodActionFailure(parsed.error) };
+  }
+
+  const ownerId = parsed.data.ownerUserId?.trim() || null;
+  if (ownerId && !(await assertMembershipInOrg(ctx.organizationId, ownerId))) {
+    return { ok: false, error: "Owner must be a member of this organization.", fieldErrors: { ownerUserId: ["Invalid"] } };
+  }
+
+  await prisma.quote.update({
+    where: { id: existing.id },
+    data: {
+      title: parsed.data.title,
+      serviceAddressText: parsed.data.serviceAddressText?.trim() ? parsed.data.serviceAddressText : null,
+      serviceAddressTbd: parsed.data.serviceAddressTbd,
+      scopeIntent: parsed.data.scopeIntent,
+      internalNotes: parsed.data.internalNotes?.trim() ? parsed.data.internalNotes : null,
+      status: parsed.data.status ?? undefined,
+      ownerUserId: ownerId,
+    },
+  });
+
+  await recordQuoteActivity(prisma, {
+    organizationId: ctx.organizationId,
+    quoteId: existing.id,
+    opportunityId: existing.opportunityId,
+    customerId: existing.customerId,
+    actorUserId: ctx.userId,
+    eventType: QuoteActivityEventType.QUOTE_UPDATED,
+    summary: "Quote basics updated",
+    payload: { quoteId: existing.id },
+  });
+
+  return { ok: true, quoteId: existing.id };
+}
+
+export async function quoteMutationUpdateQuoteDraftProposal(
+  ctx: OrgSessionContext,
+  formData: FormData,
+): Promise<QuoteActionResult> {
+  if (!canAuthorQuotes(ctx.role)) {
+    return { ok: false, error: "You do not have permission to edit quotes." };
+  }
+
+  const quoteId = String(formData.get("quoteId") ?? "");
+  const existing = await prisma.quote.findFirst({
+    where: { id: quoteId, organizationId: ctx.organizationId },
+  });
+  if (!existing) {
+    return { ok: false, error: "Quote not found." };
+  }
+
+  if (isQuoteStructurallyLocked(existing.status)) {
+    return { ok: false, error: "Proposal content is frozen after send." };
+  }
+
+  const parsed = updateQuoteDraftProposalSchema.safeParse({
+    quoteId: formData.get("quoteId"),
+    scopeSummary: formData.get("scopeSummary") || null,
+    customerFacingIntro: formData.get("customerFacingIntro") || null,
+  });
+  if (!parsed.success) {
+    return { ok: false, ...zodActionFailure(parsed.error) };
+  }
+
+  await prisma.quote.update({
+    where: { id: existing.id },
+    data: {
+      scopeSummary: parsed.data.scopeSummary?.trim() ? parsed.data.scopeSummary : null,
+      customerFacingIntro: parsed.data.customerFacingIntro?.trim() ? parsed.data.customerFacingIntro : null,
+    },
+  });
+
+  await recordQuoteActivity(prisma, {
+    organizationId: ctx.organizationId,
+    quoteId: existing.id,
+    opportunityId: existing.opportunityId,
+    customerId: existing.customerId,
+    actorUserId: ctx.userId,
+    eventType: QuoteActivityEventType.QUOTE_UPDATED,
+    summary: "Proposal content updated",
     payload: { quoteId: existing.id },
   });
 

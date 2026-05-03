@@ -22,6 +22,8 @@ import {
   quoteMutationUpdateLineExecutionTaskStatus,
   quoteMutationUpdateLineItem,
   quoteMutationUpdateQuote,
+  quoteMutationUpdateQuoteDraftBasics,
+  quoteMutationUpdateQuoteDraftProposal,
   quoteMutationUpdateTask,
   quoteMutationUpdateTaskStatus,
   zodActionFailure,
@@ -82,6 +84,26 @@ function revalidateQuote(quoteId: string) {
 export async function updateQuote(_prev: QuoteActionResult | undefined, formData: FormData): Promise<QuoteActionResult> {
   const ctx = await requireOrgSession();
   const r = await quoteMutationUpdateQuote(ctx, formData);
+  if (r.ok && r.quoteId) revalidateQuote(r.quoteId);
+  return r;
+}
+
+export async function updateQuoteDraftBasics(
+  _prev: QuoteActionResult | undefined,
+  formData: FormData,
+): Promise<QuoteActionResult> {
+  const ctx = await requireOrgSession();
+  const r = await quoteMutationUpdateQuoteDraftBasics(ctx, formData);
+  if (r.ok && r.quoteId) revalidateQuote(r.quoteId);
+  return r;
+}
+
+export async function updateQuoteDraftProposal(
+  _prev: QuoteActionResult | undefined,
+  formData: FormData,
+): Promise<QuoteActionResult> {
+  const ctx = await requireOrgSession();
+  const r = await quoteMutationUpdateQuoteDraftProposal(ctx, formData);
   if (r.ok && r.quoteId) revalidateQuote(r.quoteId);
   return r;
 }

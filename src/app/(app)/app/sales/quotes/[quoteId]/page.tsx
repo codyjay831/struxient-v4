@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CustomerPortalSubmissionType, QuoteStatus } from "@prisma/client";
+import { CustomerPortalSubmissionType, QuoteLineMode, QuoteStatus } from "@prisma/client";
 import { canCreateCustomerPortalLink, canRevokeOrRegenerateCustomerPortalLink } from "@/lib/phase8-permissions";
 import { canAuthorQuotes } from "@/lib/phase2-permissions";
 import { canManageQuoteWorkTemplates } from "@/lib/phase3-permissions";
@@ -21,6 +21,7 @@ import {
   listCustomerPortalSubmissionsForQuote,
 } from "@/server/phase9/customer-portal-submission-queries";
 import { formatScheduleWindowDisplay } from "@/lib/format-schedule-window";
+import { isQuoteStructurallyLocked } from "@/lib/quote-lifecycle";
 import { canManageJobEvidence, canViewJobEvidence } from "@/lib/phase12-permissions";
 import {
   listJobTasksForEvidencePicker,
@@ -74,6 +75,15 @@ export default async function QuoteWorkspacePage({ params }: { params: Promise<{
   });
   const sendBlocked = !allQuoteSendBlockersPass(readiness);
   const warningCount = readiness.filter((i) => i.severity === "WARNING").length;
+
+  const defaultExpandedSection: "basics" | "proposal" | "lines" | "execution" | "readiness" | "activity" = (() => {
+    if (isQuoteStructurallyLocked(quote.status)) return "lines";
+    if (!quote.title.trim() || !quote.scopeIntent.trim()) return "basics";
+    const activeLines = quote.lineItems.filter((l) => l.lineMode !== QuoteLineMode.REMOVED);
+    if (activeLines.length === 0) return "lines";
+    if (sendBlocked) return "readiness";
+    return "lines";
+  })();
 
   const workTemplatesRaw = await listActiveQuoteWorkTemplatesGrouped(ctx.organizationId);
   const workTemplates = {
@@ -168,7 +178,6 @@ export default async function QuoteWorkspacePage({ params }: { params: Promise<{
       : undefined;
 
   const payload = {
-    organizationName: ctx.organizationName,
     quote: {
       id: quote.id,
       displayNumber: quote.displayNumber,
@@ -330,5 +339,5 @@ export default async function QuoteWorkspacePage({ params }: { params: Promise<{
       : undefined,
   };
 
-  return <QuoteWorkspace {...payload} />;
+  return <QuoteWorkspace {...payload} defaultExpandedSection={defaultExpandedSection} />;
 }

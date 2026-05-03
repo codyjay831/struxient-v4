@@ -1,19 +1,18 @@
-import Link from "next/link";
+import { CustomerBackLink, CustomerPageHeader, CustomerWorkspaceShell, MetadataPill } from "@/components/customers/customer-area";
 import { CustomerCreateForm } from "./customer-create-form";
 
 export default function NewCustomerPage() {
   return (
-    <div className="mx-auto max-w-6xl space-y-8 p-6">
-      <div className="space-y-1">
-        <Link href="/app/customers" className="text-xs font-medium text-muted-foreground hover:text-foreground">
-          ← Customers
-        </Link>
-        <h1 className="text-lg font-semibold tracking-tight text-foreground">New customer</h1>
-        <p className="max-w-xl text-sm text-muted-foreground">
-          Create a durable customer record before capturing opportunities and quotes.
-        </p>
-      </div>
+    <CustomerWorkspaceShell>
+      <nav className="mb-4" aria-label="Breadcrumb">
+        <CustomerBackLink />
+      </nav>
+      <CustomerPageHeader
+        title="New customer"
+        subtitle="Create a durable operational record — the system-wide anchor for who you are working with, before or after any single sale or job."
+        badge={<MetadataPill variant="outline">Customer record</MetadataPill>}
+      />
       <CustomerCreateForm />
-    </div>
+    </CustomerWorkspaceShell>
   );
 }

@@ -1,17 +1,29 @@
 import Link from "next/link";
+import type { CustomerContactType } from "@prisma/client";
+import { FileText } from "lucide-react";
 import { requireOrgSession } from "@/server/phase1/org-session";
 import { listCustomersForOrg } from "@/server/phase1/queries";
 import { Button } from "@/components/ui/button";
-import { formatCustomerStatus } from "@/lib/format-enums";
+import { formatContactType, formatCustomerKind, formatCustomerStatus } from "@/lib/format-enums";
+import {
+  CustomerEmptyState,
+  CustomerPageHeader,
+  CustomerWorkspaceShell,
+  MetadataPill,
+} from "@/components/customers/customer-area";
 
 function contactSummary(
-  methods: { type: string; value: string; isPrimary: boolean; archivedAt: Date | null }[],
+  methods: { type: CustomerContactType; value: string; isPrimary: boolean; archivedAt: Date | null }[],
 ) {
   const active = methods.filter((m) => !m.archivedAt);
-  if (active.length === 0) return "No contacts on file";
+  if (active.length === 0) return null;
   const primary = active.find((m) => m.isPrimary) ?? active[0];
-  const more = active.length > 1 ? ` +${active.length - 1}` : "";
-  return `${primary.type}: ${primary.value}${more}`;
+  const more = active.length > 1 ? ` · +${active.length - 1} more` : "";
+  return `${formatContactType(primary.type)}: ${primary.value}${more}`;
+}
+
+function formatShortDate(d: Date) {
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 export default async function CustomersListPage() {
@@ -19,62 +31,75 @@ export default async function CustomersListPage() {
   const customers = await listCustomersForOrg(ctx.organizationId);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-lg font-semibold tracking-tight text-foreground">Customers</h1>
-          <p className="max-w-xl text-sm text-muted-foreground">
-            Relationship records for the people and organizations you serve. Contacts live here; opportunities and
-            quotes are managed under Sales.
-          </p>
-        </div>
-        <Button asChild className="w-fit rounded-sm">
-          <Link href="/app/customers/new">Create customer</Link>
-        </Button>
-      </div>
-
-      {customers.length === 0 ? (
-        <div className="rounded-sm border border-dashed border-border bg-card/30 p-10 text-center">
-          <p className="text-sm font-medium text-foreground">No customers yet</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Create a customer to capture who is requesting work before you open an opportunity.
-          </p>
-          <Button asChild className="mt-6 rounded-sm">
+    <CustomerWorkspaceShell>
+      <CustomerPageHeader
+        title="Customers"
+        subtitle="Operational CRM records for every person and organization you serve — linked to opportunities, quotes, jobs, and portal activity."
+        actions={
+          <Button asChild className="rounded-md font-semibold">
             <Link href="/app/customers/new">Create customer</Link>
           </Button>
-        </div>
+        }
+      />
+
+      {customers.length === 0 ? (
+        <CustomerEmptyState
+          title="No customer records yet"
+          description="A customer in Struxient is a durable record: it can exist before a lead, after a sale, or from import. Start here so every opportunity and quote stays tied to the right party."
+        >
+          <Button asChild className="rounded-md font-semibold">
+            <Link href="/app/customers/new">Create customer</Link>
+          </Button>
+        </CustomerEmptyState>
       ) : (
-        <div className="overflow-hidden rounded-sm border border-border">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-border bg-muted/40">
-              <tr>
-                <th className="px-4 py-3 font-medium text-muted-foreground">Name</th>
-                <th className="hidden px-4 py-3 font-medium text-muted-foreground md:table-cell">Contacts</th>
-                <th className="px-4 py-3 font-medium text-muted-foreground">Status</th>
-                <th className="hidden px-4 py-3 font-medium text-muted-foreground lg:table-cell">Updated</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border bg-card/20">
-              {customers.map((c) => (
-                <tr key={c.id} className="transition-colors hover:bg-muted/30">
-                  <td className="px-4 py-3">
-                    <Link href={`/app/customers/${c.id}`} className="font-medium text-primary hover:underline">
-                      {c.displayName}
-                    </Link>
-                  </td>
-                  <td className="hidden max-w-xs truncate px-4 py-3 text-muted-foreground md:table-cell">
-                    {contactSummary(c.contactMethods)}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatCustomerStatus(c.status)}</td>
-                  <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
-                    {c.updatedAt.toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="grid gap-3">
+          {customers.map((c) => {
+            const contacts = contactSummary(c.contactMethods);
+            const hasNotes = Boolean(c.notes?.trim());
+            return (
+              <li key={c.id}>
+                <Link
+                  href={`/app/customers/${c.id}`}
+                  className="group block rounded-md border border-border/80 bg-card/30 p-4 shadow-sm transition-colors hover:border-primary/35 hover:bg-card/50 dark:bg-card/20 dark:hover:bg-card/35"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate text-sm font-semibold text-foreground group-hover:text-primary">
+                          {c.displayName}
+                        </span>
+                        <MetadataPill variant="outline">{formatCustomerKind(c.kind)}</MetadataPill>
+                        <MetadataPill variant="muted">{formatCustomerStatus(c.status)}</MetadataPill>
+                        {hasNotes ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/30 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                            title="Has internal notes"
+                          >
+                            <FileText className="size-3" aria-hidden />
+                            Notes
+                          </span>
+                        ) : null}
+                      </div>
+                      {contacts ? (
+                        <p className="truncate text-xs text-muted-foreground">{contacts}</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No active contacts on file</p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 flex-col gap-1 text-right text-[11px] tabular-nums text-muted-foreground sm:text-xs">
+                      <span>Updated {formatShortDate(c.updatedAt)}</span>
+                      <span>Created {formatShortDate(c.createdAt)}</span>
+                      <span className="font-medium text-foreground/90">
+                        {c.contactMethods.length} contact{c.contactMethods.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
       )}
-    </div>
+    </CustomerWorkspaceShell>
   );
 }
