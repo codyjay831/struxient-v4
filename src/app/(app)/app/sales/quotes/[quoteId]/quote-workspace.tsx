@@ -2,6 +2,7 @@
 
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   CustomerContactType,
   JobStatus,
@@ -939,6 +940,44 @@ function LineItemsSection({
   canManageWorkTemplates: boolean;
 }) {
   const [addState, addAction] = useActionState(addQuoteLineItem, undefined);
+  const [newLineFormOpen, setNewLineFormOpen] = useState(false);
+  useEffect(() => {
+    if (addState?.ok) setNewLineFormOpen(false);
+  }, [addState?.ok]);
+
+  const lineItemChoiceRow = (
+    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setNewLineFormOpen(true)}
+        className="h-9 shrink-0 rounded-[5px] border-input dark:border-zinc-700/80 bg-transparent text-xs text-foreground/90 dark:text-zinc-200 hover:bg-muted/80 dark:hover:bg-zinc-900/80"
+      >
+        Create new line item
+      </Button>
+      <WorkTemplateInsertDialog
+        quoteId={quoteId}
+        insertKind="line"
+        items={workTemplates.line}
+        canManageTemplates={canManageWorkTemplates}
+        title="Insert line from template"
+        emptyTitle="No line templates yet"
+        emptyBody="Save an existing line (with its execution plan) as a template, then insert it here as editable quote-owned work."
+        trigger={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0 rounded-[5px] border-input dark:border-zinc-700/80 bg-transparent text-xs text-foreground/90 dark:text-zinc-300 hover:bg-muted/80 dark:hover:bg-zinc-900/80"
+          >
+            Add line item from template
+          </Button>
+        }
+      />
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       <p className="text-xs leading-relaxed text-muted-foreground dark:text-zinc-500">
@@ -946,9 +985,12 @@ function LineItemsSection({
         execution plan panel.
       </p>
       {lines.length === 0 ? (
-        <p className="rounded-[5px] border border-dashed border-border dark:border-zinc-700/60 bg-muted/30 dark:bg-zinc-950/30 px-4 py-6 text-sm text-muted-foreground dark:text-zinc-500">
-          No line items yet. Add the first priced line to describe what the customer is buying.
-        </p>
+        <div className="space-y-3 rounded-[5px] border border-dashed border-border dark:border-zinc-700/60 bg-muted/20 px-4 py-5 dark:bg-zinc-950/30">
+          <p className="text-sm text-muted-foreground dark:text-zinc-500">
+            No line items yet. Start from scratch or pull in a saved commercial line template.
+          </p>
+          {!isSent ? lineItemChoiceRow : null}
+        </div>
       ) : (
         <div className="space-y-6">
           {lines.map((l) => (
@@ -966,75 +1008,94 @@ function LineItemsSection({
       {!isSent ? (
         <>
           <Separator />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:text-zinc-500">Add line item</h3>
-            <WorkTemplateInsertDialog
-              quoteId={quoteId}
-              insertKind="line"
-              items={workTemplates.line}
-              canManageTemplates={canManageWorkTemplates}
-              title="Insert line from template"
-              emptyTitle="No line templates yet"
-              emptyBody="Save an existing line (with its execution plan) as a template, then insert it here as editable quote-owned work."
-              trigger={
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 bg-transparent text-[11px] text-foreground/90 dark:text-zinc-300 hover:bg-muted/80 dark:hover:bg-zinc-900/80"
-                >
-                  Add from template
-                </Button>
-              }
-            />
+          <div className="space-y-3">
+            <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:text-zinc-500">
+              Add to this quote
+            </h3>
+            {!newLineFormOpen ? (
+              <div className="rounded-[5px] border border-border/80 bg-card/40 px-3 py-3 dark:border-zinc-800/60 dark:bg-zinc-950/40">
+                {lineItemChoiceRow}
+              </div>
+            ) : (
+              <div className="space-y-3 rounded-[5px] border border-border bg-card/60 px-3 py-3 dark:border-zinc-800/60 dark:bg-zinc-950/50">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:text-zinc-500">
+                    New line item
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 rounded-[5px] text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
+                    onClick={() => setNewLineFormOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                <form action={addAction} className="grid gap-3 md:grid-cols-2">
+                  <input type="hidden" name="quoteId" value={quoteId} />
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Title</Label>
+                    <Input name="title" required className={quoteWorkbenchInputClass()} placeholder="e.g. Install EV charger" />
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Customer description</Label>
+                    <Textarea name="customerDescription" required rows={2} className={quoteWorkbenchTextareaClass()} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Quantity</Label>
+                    <Input name="quantity" defaultValue="1" required className={quoteWorkbenchInputClass()} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Unit price (cents)</Label>
+                    <Input name="unitPriceCents" type="number" min={0} className={quoteWorkbenchInputClass()} placeholder="185000" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Pricing mode</Label>
+                    <select name="pricingMode" className={quoteWorkbenchSelectClass() + " w-full"} defaultValue={PricingMode.FIXED_PRICE}>
+                      {Object.values(PricingMode).map((m) => (
+                        <option key={m} value={m}>
+                          {m.replace(/_/g, " ")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Line mode</Label>
+                    <select name="lineMode" className={quoteWorkbenchSelectClass() + " w-full"} defaultValue={QuoteLineMode.REQUIRED}>
+                      {Object.values(QuoteLineMode).map((m) => (
+                        <option key={m} value={m}>
+                          {m.replace(/_/g, " ")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Internal notes</Label>
+                    <Textarea name="internalNotes" rows={2} className={quoteWorkbenchTextareaClass()} />
+                  </div>
+                  <div className="flex flex-wrap gap-2 md:col-span-2">
+                    <Button
+                      type="submit"
+                      className="h-8 rounded-[5px] bg-primary text-xs text-primary-foreground hover:bg-primary/90"
+                    >
+                      Add line item
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 text-xs"
+                      onClick={() => setNewLineFormOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                  <ActionError state={addState} />
+                </form>
+              </div>
+            )}
           </div>
-          <form action={addAction} className="grid gap-3 md:grid-cols-2">
-            <input type="hidden" name="quoteId" value={quoteId} />
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Title</Label>
-              <Input name="title" required className={quoteWorkbenchInputClass()} placeholder="e.g. Install EV charger" />
-            </div>
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Customer description</Label>
-              <Textarea name="customerDescription" required rows={2} className={quoteWorkbenchTextareaClass()} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Quantity</Label>
-              <Input name="quantity" defaultValue="1" required className={quoteWorkbenchInputClass()} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Unit price (cents)</Label>
-              <Input name="unitPriceCents" type="number" min={0} className={quoteWorkbenchInputClass()} placeholder="185000" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Pricing mode</Label>
-              <select name="pricingMode" className={quoteWorkbenchSelectClass() + " w-full"} defaultValue={PricingMode.FIXED_PRICE}>
-                {Object.values(PricingMode).map((m) => (
-                  <option key={m} value={m}>
-                    {m.replace(/_/g, " ")}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Line mode</Label>
-              <select name="lineMode" className={quoteWorkbenchSelectClass() + " w-full"} defaultValue={QuoteLineMode.REQUIRED}>
-                {Object.values(QuoteLineMode).map((m) => (
-                  <option key={m} value={m}>
-                    {m.replace(/_/g, " ")}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Internal notes</Label>
-              <Textarea name="internalNotes" rows={2} className={quoteWorkbenchTextareaClass()} />
-            </div>
-            <Button type="submit" className="h-8 rounded-[5px] bg-primary text-xs text-primary-foreground hover:bg-primary/90 md:col-span-2">
-              Add line item
-            </Button>
-            <ActionError state={addState} />
-          </form>
         </>
       ) : null}
     </div>
@@ -1089,11 +1150,19 @@ function LineItemExecutionPlanning({
         then add tasks. Customer-visible tasks need a label for the internal preview only.
       </p>
       {stages.length === 0 ? (
-        <p className="text-xs text-muted-foreground dark:text-zinc-500">
-          No stages yet. Create a stage (for example Permit or Install), then add tasks under that stage.
-        </p>
+        <div className="space-y-3 rounded-[5px] border border-dashed border-violet-500/25 bg-violet-500/[0.03] px-3 py-3 dark:border-violet-400/20 dark:bg-violet-950/10">
+          <p className="text-xs text-muted-foreground dark:text-zinc-500">
+            No stages yet. Create a stage (for example Permit or Install), then add tasks under that stage.
+          </p>
+          <AddExecutionStageForm
+            quoteId={quoteId}
+            lineItemId={line.id}
+            workTemplates={workTemplates}
+            canManageWorkTemplates={canManageWorkTemplates}
+          />
+        </div>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-3 border-l-2 border-violet-500/20 pl-3 dark:border-violet-400/15">
           {stages.map((s) => (
             <LineExecutionStageEditor
               key={s.id}
@@ -1106,12 +1175,14 @@ function LineItemExecutionPlanning({
           ))}
         </ul>
       )}
-      <AddExecutionStageForm
-        quoteId={quoteId}
-        lineItemId={line.id}
-        workTemplates={workTemplates}
-        canManageWorkTemplates={canManageWorkTemplates}
-      />
+      {stages.length > 0 ? (
+        <AddExecutionStageForm
+          quoteId={quoteId}
+          lineItemId={line.id}
+          workTemplates={workTemplates}
+          canManageWorkTemplates={canManageWorkTemplates}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1128,49 +1199,104 @@ function AddExecutionStageForm({
   canManageWorkTemplates: boolean;
 }) {
   const [st, act] = useActionState(addQuoteLineExecutionStage, undefined);
-  return (
-    <div className="space-y-2 rounded-[5px] border border-dashed border-border bg-muted/40 p-3 dark:border-zinc-700/50 dark:bg-zinc-950/80">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:text-zinc-500">New stage</p>
-        <WorkTemplateInsertDialog
-          quoteId={quoteId}
-          insertKind="stage"
-          lineItemId={lineItemId}
-          items={workTemplates.stage}
-          canManageTemplates={canManageWorkTemplates}
-          title="Insert stage from template"
-          emptyTitle="No stage templates yet"
-          emptyBody="Save an existing stage and its tasks as a template, then insert a copy under this line."
-          trigger={
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 bg-transparent text-[11px] text-foreground/90 dark:text-zinc-300 hover:bg-muted/80 dark:hover:bg-zinc-900/80"
-            >
-              Add stage from template
-            </Button>
-          }
-        />
-      </div>
-      <form action={act} className="grid gap-2 md:grid-cols-2">
-        <input type="hidden" name="quoteId" value={quoteId} />
-        <input type="hidden" name="lineItemId" value={lineItemId} />
-        <div className="space-y-1.5 md:col-span-2">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">New stage title</Label>
-          <Input name="title" required className={quoteWorkbenchInputClass()} placeholder="e.g. Permitting" />
-        </div>
-        <div className="space-y-1.5 md:col-span-2">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Stage internal notes (optional)</Label>
-          <Textarea name="internalNotes" rows={2} className={quoteWorkbenchTextareaClass()} />
-        </div>
-        <Button type="submit" size="sm" className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80 md:col-span-2">
-          Add stage
-        </Button>
-        <ActionError state={st} />
-      </form>
+  const [formOpen, setFormOpen] = useState(false);
+  useEffect(() => {
+    if (st?.ok) setFormOpen(false);
+  }, [st?.ok]);
+
+  const choiceRow = (
+    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setFormOpen(true)}
+        className="h-9 rounded-[5px] border-violet-500/30 bg-transparent text-xs text-foreground/90 hover:bg-violet-500/10 dark:border-violet-400/25 dark:text-zinc-200 dark:hover:bg-violet-950/40"
+      >
+        Create new stage
+      </Button>
+      <WorkTemplateInsertDialog
+        quoteId={quoteId}
+        insertKind="stage"
+        lineItemId={lineItemId}
+        items={workTemplates.stage}
+        canManageTemplates={canManageWorkTemplates}
+        title="Insert stage from template"
+        emptyTitle="No stage templates yet"
+        emptyBody="Save an existing stage and its tasks as a template, then insert a copy under this line."
+        trigger={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 rounded-[5px] border-input dark:border-zinc-700/80 bg-transparent text-xs text-foreground/90 dark:text-zinc-300 hover:bg-muted/80 dark:hover:bg-zinc-900/80"
+          >
+            Add stage from template
+          </Button>
+        }
+      />
     </div>
   );
+
+  return (
+    <div className="space-y-2 rounded-[5px] border border-dashed border-violet-500/25 bg-muted/30 p-3 dark:border-violet-400/20 dark:bg-zinc-950/60">
+      {!formOpen ? (
+        choiceRow
+      ) : (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:text-zinc-500">New stage</p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-[5px] text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
+              onClick={() => setFormOpen(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+          <form action={act} className="grid gap-2 md:grid-cols-2">
+            <input type="hidden" name="quoteId" value={quoteId} />
+            <input type="hidden" name="lineItemId" value={lineItemId} />
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">New stage title</Label>
+              <Input name="title" required className={quoteWorkbenchInputClass()} placeholder="e.g. Permitting" />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Stage internal notes (optional)</Label>
+              <Textarea name="internalNotes" rows={2} className={quoteWorkbenchTextareaClass()} />
+            </div>
+            <div className="flex flex-wrap gap-2 md:col-span-2">
+              <Button
+                type="submit"
+                size="sm"
+                className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80"
+              >
+                Create stage
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 text-xs"
+                onClick={() => setFormOpen(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+            <ActionError state={st} />
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function lineExecutionTaskEvidenceLabel(dto: CompletionRequirementDto) {
+  if (dto.state === "active") return `${dto.minAcceptedCount} evidence`;
+  if (dto.state === "invalid") return "Evidence rule invalid";
+  return null;
 }
 
 function LineExecutionStageEditor({
@@ -1189,70 +1315,122 @@ function LineExecutionStageEditor({
   const [st, act] = useActionState(updateQuoteLineExecutionStage, undefined);
   const [rmSt, rmAct] = useActionState(removeQuoteLineExecutionStage, undefined);
   const tasks = [...stage.tasks].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
+  /** Empty stages start expanded so task creation is one click away; stages with work stay compact. */
+  const [expanded, setExpanded] = useState(tasks.length === 0);
+  const requiredCount = tasks.filter((t) => t.isRequired).length;
+  const visibleCount = tasks.filter((t) => t.customerVisible).length;
+  const notesPreview = clipText(stage.internalNotes, 48);
+
   return (
-    <li className="rounded-[5px] border border-border dark:border-zinc-800/60 bg-muted/40 dark:bg-zinc-950/40 p-3">
-      <div className="mb-2 flex flex-wrap justify-end gap-2">
-        <SaveWorkTemplateDialog
-          quoteId={quoteId}
-          saveKind="stage"
-          lineItemId={lineId}
-          stageId={stage.id}
-          defaultName={stage.title}
-          trigger={
+    <li className="overflow-hidden rounded-[5px] border border-violet-500/20 bg-violet-500/[0.04] dark:border-violet-400/18 dark:bg-violet-950/25">
+      <div className="flex min-w-0 gap-2 border-l-[3px] border-l-violet-500/50 px-2 py-2.5 dark:border-l-violet-400/45 sm:px-3">
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[4px] border border-violet-500/20 bg-background/80 text-violet-700 transition hover:bg-muted/80 dark:border-violet-400/25 dark:bg-zinc-950/80 dark:text-violet-300 dark:hover:bg-zinc-900/80"
+          aria-expanded={expanded}
+          aria-label={expanded ? "Collapse stage" : "Expand stage"}
+        >
+          {expanded ? <ChevronDown className="size-4" aria-hidden /> : <ChevronRight className="size-4" aria-hidden />}
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-700/90 dark:text-violet-300/90">Stage</p>
+          <p className="truncate text-sm font-semibold text-foreground dark:text-zinc-100">{stage.title}</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground dark:text-zinc-500">
+            {tasks.length} task{tasks.length === 1 ? "" : "s"}
+            {requiredCount ? ` · ${requiredCount} required` : ""}
+            {visibleCount ? ` · ${visibleCount} customer-visible` : ""}
+            {notesPreview ? ` · ${notesPreview}` : ""}
+          </p>
+        </div>
+      </div>
+      {expanded ? (
+        <div className="space-y-3 border-t border-violet-500/15 bg-background/40 px-3 py-3 dark:border-violet-400/10 dark:bg-zinc-950/40">
+          <div className="flex flex-wrap justify-end gap-2">
+            <SaveWorkTemplateDialog
+              quoteId={quoteId}
+              saveKind="stage"
+              lineItemId={lineId}
+              stageId={stage.id}
+              defaultName={stage.title}
+              trigger={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 rounded-[5px] text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
+                >
+                  Save stage as template
+                </Button>
+              }
+            />
+          </div>
+          <form action={act} className="grid gap-2 md:grid-cols-2">
+            <input type="hidden" name="quoteId" value={quoteId} />
+            <input type="hidden" name="lineItemId" value={lineId} />
+            <input type="hidden" name="stageId" value={stage.id} />
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Stage title</Label>
+              <Input name="title" defaultValue={stage.title} required className={quoteWorkbenchInputClass()} />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Stage internal notes</Label>
+              <Textarea name="internalNotes" defaultValue={stage.internalNotes ?? ""} rows={2} className={quoteWorkbenchTextareaClass()} />
+            </div>
             <Button
-              type="button"
-              variant="ghost"
+              type="submit"
               size="sm"
-              className="h-8 rounded-[5px] text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
+              className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80 md:col-span-2"
             >
-              Save stage as template
+              Save stage
             </Button>
-          }
-        />
-      </div>
-      <form action={act} className="grid gap-2 md:grid-cols-2">
-        <input type="hidden" name="quoteId" value={quoteId} />
-        <input type="hidden" name="lineItemId" value={lineId} />
-        <input type="hidden" name="stageId" value={stage.id} />
-        <div className="space-y-1.5 md:col-span-2">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Stage title</Label>
-          <Input name="title" defaultValue={stage.title} required className={quoteWorkbenchInputClass()} />
+            <ActionError state={st} />
+          </form>
+          <form action={rmAct}>
+            <input type="hidden" name="quoteId" value={quoteId} />
+            <input type="hidden" name="stageId" value={stage.id} />
+            <Button
+              type="submit"
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 text-xs text-foreground/90 dark:text-zinc-300 hover:bg-muted/70 dark:hover:bg-zinc-900/60"
+            >
+              Remove stage
+            </Button>
+            <ActionError state={rmSt} />
+          </form>
+          <div className="space-y-3 border-t border-violet-500/15 pt-3 dark:border-violet-400/10">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:text-zinc-500">
+              Tasks in this stage
+            </p>
+            {tasks.length === 0 ? (
+              <div className="space-y-2 rounded-[5px] border border-dashed border-border/80 bg-muted/20 px-2 py-3 dark:border-zinc-700/50 dark:bg-zinc-950/30">
+                <p className="text-xs text-muted-foreground dark:text-zinc-500">No tasks in this stage yet.</p>
+                <AddLineExecutionTaskForm
+                  quoteId={quoteId}
+                  stageId={stage.id}
+                  workTemplates={workTemplates}
+                  canManageWorkTemplates={canManageWorkTemplates}
+                />
+              </div>
+            ) : (
+              <>
+                <ul className="space-y-2 border-l-2 border-border/60 pl-2 dark:border-zinc-700/50">
+                  {tasks.map((t) => (
+                    <LineExecutionTaskEditor key={t.id} quoteId={quoteId} stageId={stage.id} task={t} />
+                  ))}
+                </ul>
+                <AddLineExecutionTaskForm
+                  quoteId={quoteId}
+                  stageId={stage.id}
+                  workTemplates={workTemplates}
+                  canManageWorkTemplates={canManageWorkTemplates}
+                />
+              </>
+            )}
+          </div>
         </div>
-        <div className="space-y-1.5 md:col-span-2">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Stage internal notes</Label>
-          <Textarea name="internalNotes" defaultValue={stage.internalNotes ?? ""} rows={2} className={quoteWorkbenchTextareaClass()} />
-        </div>
-        <Button type="submit" size="sm" className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80 md:col-span-2">
-          Save stage
-        </Button>
-        <ActionError state={st} />
-      </form>
-      <form action={rmAct} className="mt-2">
-        <input type="hidden" name="quoteId" value={quoteId} />
-        <input type="hidden" name="stageId" value={stage.id} />
-        <Button type="submit" size="sm" variant="outline" className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 text-xs text-foreground/90 dark:text-zinc-300 hover:bg-muted/70 dark:hover:bg-zinc-900/60">
-          Remove stage
-        </Button>
-        <ActionError state={rmSt} />
-      </form>
-      <div className="mt-3 space-y-3 border-t border-border dark:border-zinc-800/50 pt-3">
-        <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:text-zinc-500">Tasks in this stage</p>
-        {tasks.length === 0 ? (
-          <p className="text-xs text-muted-foreground dark:text-zinc-500">No tasks in this stage yet.</p>
-        ) : (
-          <ul className="space-y-3">
-            {tasks.map((t) => (
-              <LineExecutionTaskEditor key={t.id} quoteId={quoteId} stageId={stage.id} task={t} />
-            ))}
-          </ul>
-        )}
-        <AddLineExecutionTaskForm
-          quoteId={quoteId}
-          stageId={stage.id}
-          workTemplates={workTemplates}
-          canManageWorkTemplates={canManageWorkTemplates}
-        />
-      </div>
+      ) : null}
     </li>
   );
 }
@@ -1269,60 +1447,105 @@ function AddLineExecutionTaskForm({
   canManageWorkTemplates: boolean;
 }) {
   const [st, act] = useActionState(addQuoteLineExecutionTask, undefined);
+  const [formOpen, setFormOpen] = useState(false);
+  useEffect(() => {
+    if (st?.ok) setFormOpen(false);
+  }, [st?.ok]);
+
+  const choiceRow = (
+    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setFormOpen(true)}
+        className="h-9 rounded-[5px] border-border/80 bg-transparent text-xs text-foreground/90 hover:bg-muted/60 dark:border-zinc-700/80 dark:text-zinc-200 dark:hover:bg-zinc-900/70"
+      >
+        Create new task
+      </Button>
+      <WorkTemplateInsertDialog
+        quoteId={quoteId}
+        insertKind="task"
+        stageId={stageId}
+        items={workTemplates.task}
+        canManageTemplates={canManageWorkTemplates}
+        title="Insert task from template"
+        emptyTitle="No task templates yet"
+        emptyBody="Save an individual execution task as a template, then insert a copy into this stage."
+        trigger={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 rounded-[5px] border-input dark:border-zinc-700/80 bg-transparent text-xs text-foreground/90 dark:text-zinc-300 hover:bg-muted/80 dark:hover:bg-zinc-900/80"
+          >
+            Add task from template
+          </Button>
+        }
+      />
+    </div>
+  );
+
   return (
-    <div className="space-y-2 rounded-[5px] border border-dashed border-border bg-muted/40 p-2.5 dark:border-zinc-700/45 dark:bg-zinc-950/70">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:text-zinc-500">New task</p>
-        <WorkTemplateInsertDialog
-          quoteId={quoteId}
-          insertKind="task"
-          stageId={stageId}
-          items={workTemplates.task}
-          canManageTemplates={canManageWorkTemplates}
-          title="Insert task from template"
-          emptyTitle="No task templates yet"
-          emptyBody="Save an individual execution task as a template, then insert a copy into this stage."
-          trigger={
+    <div className="space-y-2 rounded-[5px] border border-dashed border-border/90 bg-muted/25 p-2.5 dark:border-zinc-700/45 dark:bg-zinc-950/50">
+      {!formOpen ? (
+        choiceRow
+      ) : (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:text-zinc-500">New task</p>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 bg-transparent text-[11px] text-foreground/90 dark:text-zinc-300 hover:bg-muted/80 dark:hover:bg-zinc-900/80"
+              className="h-8 rounded-[5px] text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
+              onClick={() => setFormOpen(false)}
             >
-              Add task from template
+              Cancel
             </Button>
-          }
-        />
-      </div>
-      <form action={act} className="grid gap-2 md:grid-cols-2">
-        <input type="hidden" name="quoteId" value={quoteId} />
-        <input type="hidden" name="stageId" value={stageId} />
-        <div className="space-y-1.5 md:col-span-2">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Task title</Label>
-          <Input name="title" required className={quoteWorkbenchInputClass()} placeholder="e.g. Submit permit application" />
+          </div>
+          <form action={act} className="grid gap-2 md:grid-cols-2">
+            <input type="hidden" name="quoteId" value={quoteId} />
+            <input type="hidden" name="stageId" value={stageId} />
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Task title</Label>
+              <Input name="title" required className={quoteWorkbenchInputClass()} placeholder="e.g. Submit permit application" />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Description</Label>
+              <Textarea name="description" rows={2} className={quoteWorkbenchTextareaClass()} />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground dark:text-zinc-400 md:col-span-2">
+              <input type="checkbox" name="isRequired" />
+              Required for readiness (line-level)
+            </label>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground dark:text-zinc-400 md:col-span-2">
+              <input type="checkbox" name="customerVisible" />
+              Customer-visible (internal preview)
+            </label>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Customer label (if visible)</Label>
+              <Input name="customerLabel" className={quoteWorkbenchInputClass()} />
+            </div>
+            <PlannedTaskEvidenceRequirementFields />
+            <div className="flex flex-wrap gap-2 md:col-span-2">
+              <Button type="submit" size="sm" className="h-8 rounded-[5px] bg-primary text-xs text-primary-foreground hover:bg-primary/90">
+                Create task
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 text-xs"
+                onClick={() => setFormOpen(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+            <ActionError state={st} />
+          </form>
         </div>
-      <div className="space-y-1.5 md:col-span-2">
-        <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Description</Label>
-        <Textarea name="description" rows={2} className={quoteWorkbenchTextareaClass()} />
-      </div>
-      <label className="flex items-center gap-2 text-xs text-muted-foreground dark:text-zinc-400 md:col-span-2">
-        <input type="checkbox" name="isRequired" />
-        Required for readiness (line-level)
-      </label>
-      <label className="flex items-center gap-2 text-xs text-muted-foreground dark:text-zinc-400 md:col-span-2">
-        <input type="checkbox" name="customerVisible" />
-        Customer-visible (internal preview)
-      </label>
-      <div className="space-y-1.5 md:col-span-2">
-        <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Customer label (if visible)</Label>
-        <Input name="customerLabel" className={quoteWorkbenchInputClass()} />
-      </div>
-        <PlannedTaskEvidenceRequirementFields />
-        <Button type="submit" size="sm" className="h-8 rounded-[5px] bg-primary text-xs text-primary-foreground hover:bg-primary/90 md:col-span-2">
-          Add task
-        </Button>
-        <ActionError state={st} />
-      </form>
+      )}
     </div>
   );
 }
@@ -1338,77 +1561,138 @@ function LineExecutionTaskEditor({
 }) {
   const [st, act] = useActionState(updateQuoteLineExecutionTask, undefined);
   const [stStatus, actStatus] = useActionState(updateQuoteLineExecutionTaskStatus, undefined);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const evidenceLabel = lineExecutionTaskEvidenceLabel(task.completionRequirement);
+  const statusShort = task.status.replace(/_/g, " ");
+
+  const badgeClass =
+    "inline-flex max-w-full items-center truncate rounded-[3px] border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide";
+
   return (
-    <li className="rounded-[4px] border border-border bg-muted/60 p-2 dark:border-zinc-800/70 dark:bg-zinc-950/90">
-      <div className="mb-2 flex justify-end">
-        <SaveWorkTemplateDialog
-          quoteId={quoteId}
-          saveKind="task"
-          stageId={stageId}
-          taskId={task.id}
-          defaultName={task.title}
-          trigger={
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 rounded-[5px] text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
-            >
-              Save task as template
-            </Button>
-          }
-        />
+    <li className="min-w-0 overflow-hidden rounded-[4px] border border-zinc-300/40 bg-zinc-50/80 dark:border-zinc-700/60 dark:bg-zinc-950/80">
+      <div className="flex min-w-0 gap-1.5 p-2">
+        <button
+          type="button"
+          onClick={() => setDetailOpen((o) => !o)}
+          className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-[4px] border border-border/80 bg-background text-muted-foreground transition hover:bg-muted/80 dark:border-zinc-700/80 dark:bg-zinc-900/80 dark:text-zinc-400 dark:hover:bg-zinc-800/80"
+          aria-expanded={detailOpen}
+          aria-label={detailOpen ? "Collapse task details" : "Expand task details"}
+        >
+          {detailOpen ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium text-foreground dark:text-zinc-200">{task.title}</p>
+          <div className="mt-1 flex min-w-0 flex-wrap gap-1">
+            {task.isRequired ? (
+              <span className={`${badgeClass} border-amber-500/35 bg-amber-500/10 text-amber-900 dark:border-amber-500/25 dark:bg-amber-950/30 dark:text-amber-200/90`}>
+                Required
+              </span>
+            ) : (
+              <span className={`${badgeClass} border-border/60 bg-muted/50 text-muted-foreground dark:border-zinc-700/60 dark:bg-zinc-900/50 dark:text-zinc-500`}>
+                Optional
+              </span>
+            )}
+            {task.customerVisible ? (
+              <span className={`${badgeClass} border-sky-500/35 bg-sky-500/10 text-sky-900 dark:border-sky-500/25 dark:bg-sky-950/40 dark:text-sky-200/90`}>
+                Customer-visible
+              </span>
+            ) : null}
+            {task.completionRequirement.state === "invalid" ? (
+              <span className={`${badgeClass} border-amber-600/40 bg-amber-500/15 text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/25 dark:text-amber-200/90`}>
+                Evidence invalid
+              </span>
+            ) : evidenceLabel ? (
+              <span className={`${badgeClass} border-emerald-600/30 bg-emerald-500/10 text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-950/30 dark:text-emerald-200/85`}>
+                {evidenceLabel}
+              </span>
+            ) : null}
+            <span className={`${badgeClass} border-border/50 bg-background/80 font-mono text-[10px] normal-case text-muted-foreground dark:border-zinc-700/50 dark:bg-zinc-900/60 dark:text-zinc-500`}>
+              {statusShort}
+            </span>
+          </div>
+        </div>
       </div>
-      <form action={act} className="grid gap-2 md:grid-cols-2">
-        <input type="hidden" name="quoteId" value={quoteId} />
-        <input type="hidden" name="stageId" value={stageId} />
-        <input type="hidden" name="taskId" value={task.id} />
-        <div className="space-y-1.5 md:col-span-2">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Title</Label>
-          <Input name="title" defaultValue={task.title} required className={quoteWorkbenchInputClass()} />
+      {detailOpen ? (
+        <div className="space-y-3 border-t border-border/70 bg-muted/20 px-2 py-3 dark:border-zinc-800/60 dark:bg-zinc-950/50">
+          <div className="flex flex-wrap justify-end">
+            <SaveWorkTemplateDialog
+              quoteId={quoteId}
+              saveKind="task"
+              stageId={stageId}
+              taskId={task.id}
+              defaultName={task.title}
+              trigger={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 rounded-[5px] text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
+                >
+                  Save task as template
+                </Button>
+              }
+            />
+          </div>
+          <form action={act} className="grid gap-2 md:grid-cols-2">
+            <input type="hidden" name="quoteId" value={quoteId} />
+            <input type="hidden" name="stageId" value={stageId} />
+            <input type="hidden" name="taskId" value={task.id} />
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Title</Label>
+              <Input name="title" defaultValue={task.title} required className={quoteWorkbenchInputClass()} />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Description</Label>
+              <Textarea name="description" defaultValue={task.description ?? ""} rows={2} className={quoteWorkbenchTextareaClass()} />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground dark:text-zinc-400">
+              <input type="checkbox" name="isRequired" defaultChecked={task.isRequired} />
+              Required
+            </label>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground dark:text-zinc-400 md:col-span-2">
+              <input type="checkbox" name="customerVisible" defaultChecked={task.customerVisible} />
+              Customer-visible
+            </label>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Customer label</Label>
+              <Input name="customerLabel" defaultValue={task.customerLabel ?? ""} className={quoteWorkbenchInputClass()} />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Internal notes</Label>
+              <Textarea name="internalNotes" defaultValue={task.internalNotes ?? ""} rows={2} className={quoteWorkbenchTextareaClass()} />
+            </div>
+            <PlannedTaskEvidenceRequirementFields completionRequirement={task.completionRequirement} />
+            <Button
+              type="submit"
+              size="sm"
+              className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80 md:col-span-2"
+            >
+              Save task
+            </Button>
+            <ActionError state={st} />
+          </form>
+          <form action={actStatus} className="flex flex-wrap items-end gap-2 border-t border-border/60 pt-3 dark:border-zinc-800/50">
+            <input type="hidden" name="quoteId" value={quoteId} />
+            <input type="hidden" name="taskId" value={task.id} />
+            <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Status</Label>
+            <select name="status" defaultValue={task.status} className={quoteWorkbenchSelectClass()}>
+              {Object.values(QuoteTaskStatus).map((s) => (
+                <option key={s} value={s}>
+                  {s.replace(/_/g, " ")}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="submit"
+              size="sm"
+              className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80"
+            >
+              Update status
+            </Button>
+            <ActionError state={stStatus} />
+          </form>
         </div>
-        <div className="space-y-1.5 md:col-span-2">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Description</Label>
-          <Textarea name="description" defaultValue={task.description ?? ""} rows={2} className={quoteWorkbenchTextareaClass()} />
-        </div>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground dark:text-zinc-400">
-          <input type="checkbox" name="isRequired" defaultChecked={task.isRequired} />
-          Required
-        </label>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground dark:text-zinc-400 md:col-span-2">
-          <input type="checkbox" name="customerVisible" defaultChecked={task.customerVisible} />
-          Customer-visible
-        </label>
-        <div className="space-y-1.5 md:col-span-2">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Customer label</Label>
-          <Input name="customerLabel" defaultValue={task.customerLabel ?? ""} className={quoteWorkbenchInputClass()} />
-        </div>
-        <div className="space-y-1.5 md:col-span-2">
-          <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Internal notes</Label>
-          <Textarea name="internalNotes" defaultValue={task.internalNotes ?? ""} rows={2} className={quoteWorkbenchTextareaClass()} />
-        </div>
-        <PlannedTaskEvidenceRequirementFields completionRequirement={task.completionRequirement} />
-        <Button type="submit" size="sm" className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80 md:col-span-2">
-          Save task
-        </Button>
-        <ActionError state={st} />
-      </form>
-      <form action={actStatus} className="mt-2 flex flex-wrap items-end gap-2">
-        <input type="hidden" name="quoteId" value={quoteId} />
-        <input type="hidden" name="taskId" value={task.id} />
-        <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Status</Label>
-        <select name="status" defaultValue={task.status} className={quoteWorkbenchSelectClass()}>
-          {Object.values(QuoteTaskStatus).map((s) => (
-            <option key={s} value={s}>
-              {s.replace(/_/g, " ")}
-            </option>
-          ))}
-        </select>
-        <Button type="submit" size="sm" className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80">
-          Update status
-        </Button>
-        <ActionError state={stStatus} />
-      </form>
+      ) : null}
     </li>
   );
 }
