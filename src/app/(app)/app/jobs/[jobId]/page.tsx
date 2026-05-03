@@ -357,7 +357,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
           className="rounded-sm border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-foreground"
           role="status"
         >
-          <p className="font-medium text-amber-100">Job paused</p>
+          <p className="font-medium text-amber-900 dark:text-amber-100">Job paused</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             Field roles cannot update tasks until the job is resumed. Office staff may still update tasks if work
             continues on site under office direction.

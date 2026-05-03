@@ -13,9 +13,9 @@ import { jobEvidenceStatusLabel, type JobEvidenceRowDto } from "@/components/job
 function statusBadgeClass(s: JobEvidenceStatus): string {
   switch (s) {
     case JobEvidenceStatus.CANDIDATE:
-      return "border-amber-500/40 bg-amber-500/10 text-amber-100";
+      return "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-100";
     case JobEvidenceStatus.ACCEPTED:
-      return "border-emerald-500/35 bg-emerald-500/10 text-emerald-100";
+      return "border-emerald-500/35 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100";
     case JobEvidenceStatus.REJECTED:
       return "border-destructive/35 bg-destructive/10 text-destructive";
     default:

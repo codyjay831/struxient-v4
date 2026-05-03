@@ -1,3 +1,4 @@
+import { ThemeModeToggle } from "@/components/app-shell/theme-mode-toggle";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { logoutAction } from "@/app/(app)/app/actions";
@@ -30,6 +31,7 @@ export function AppHeader(props: {
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-3">
+        <ThemeModeToggle />
         <Separator orientation="vertical" className="hidden h-6 sm:block" />
         <form action={logoutAction}>
           <Button type="submit" variant="outline" size="sm" className="rounded-sm">

@@ -22,7 +22,7 @@ export default async function LoginPage() {
             Internal operations workspace for contracting teams. Sign in with your organization credentials.
           </p>
         </div>
-        <Card className="w-full max-w-md rounded-sm border-border shadow-lg shadow-black/40">
+        <Card className="w-full max-w-md rounded-sm border-border shadow-lg shadow-foreground/10 dark:shadow-black/40">
           <CardHeader>
             <CardTitle className="text-base">Staff sign-in</CardTitle>
             <CardDescription>Use the email and password provisioned for your organization.</CardDescription>

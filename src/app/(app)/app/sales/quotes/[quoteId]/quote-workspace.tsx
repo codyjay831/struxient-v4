@@ -89,7 +89,7 @@ function PlannedTaskEvidenceRequirementFields({
         for highlights only.
       </p>
       {completionRequirement?.state === "invalid" ? (
-        <p className="text-[11px] text-amber-400" role="status">
+        <p className="text-[11px] text-amber-800 dark:text-amber-400" role="status">
           Stored requirement is invalid: {completionRequirement.message}. Clear the toggle and save to remove it, or set
           valid values.
         </p>
@@ -126,7 +126,7 @@ function PlannedTaskEvidenceReadOnly({ dto }: { dto: CompletionRequirementDto })
     );
   }
   if (dto.state === "invalid") {
-    return <p className="text-[11px] text-amber-400">Invalid stored requirement: {dto.message}</p>;
+    return <p className="text-[11px] text-amber-800 dark:text-amber-400">Invalid stored requirement: {dto.message}</p>;
   }
   return (
     <p className="text-[11px] text-muted-foreground">
@@ -142,7 +142,7 @@ function ReadinessRow({ item }: { item: QuoteSendReadinessItem }) {
     item.status === "FAIL"
       ? "text-destructive"
       : item.severity === "WARNING"
-        ? "text-amber-400"
+        ? "text-amber-800 dark:text-amber-400"
         : "text-muted-foreground";
   return (
     <li className="flex flex-col gap-1 border-b border-border py-3 last:border-0 sm:flex-row sm:justify-between">
@@ -338,7 +338,7 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
             Total: <span className="font-semibold tabular-nums">{fmtMoney(quote.totalCents)}</span>
           </span>
           <span className="text-muted-foreground">·</span>
-          <span className={sendBlocked ? "text-destructive" : "text-emerald-400"}>{headline}</span>
+          <span className={sendBlocked ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"}>{headline}</span>
         </div>
         {!isSent ? (
           <div className="flex flex-wrap gap-2 pt-2">
@@ -591,7 +591,7 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
             className="rounded-sm border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-foreground"
             role="status"
           >
-            <p className="font-medium text-amber-200">Sent snapshot integrity issue</p>
+            <p className="font-medium text-amber-900 dark:text-amber-200">Sent snapshot integrity issue</p>
             <p className="mt-2 text-muted-foreground">
               This quote is marked sent but the frozen customer preview snapshot is missing or invalid. A live rebuild is
               not shown by design. Contact engineering or restore snapshot data before relying on this record.

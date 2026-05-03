@@ -109,7 +109,7 @@ export function WorkTemplateInsertDialog(props: {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto border-border bg-zinc-950 text-foreground">
+      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto border-border bg-background text-foreground">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="text-muted-foreground">
@@ -117,7 +117,7 @@ export function WorkTemplateInsertDialog(props: {
           </DialogDescription>
         </DialogHeader>
         {items.length === 0 ? (
-          <div className="rounded-sm border border-dashed border-border bg-zinc-900/50 px-4 py-8">
+          <div className="rounded-sm border border-dashed border-border bg-muted/40 px-4 py-8">
             <p className="text-sm font-medium text-foreground">{emptyTitle}</p>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{emptyBody}</p>
           </div>
@@ -128,7 +128,7 @@ export function WorkTemplateInsertDialog(props: {
                 <li
                   key={t.id}
                   className={cn(
-                    "rounded-sm border border-border bg-zinc-900/40 p-3 transition-colors",
+                    "rounded-sm border border-border bg-muted/30 p-3 transition-colors",
                     selectedId === t.id ? "border-primary/60 ring-1 ring-primary/30" : "hover:border-border/80",
                   )}
                 >
@@ -251,7 +251,7 @@ export function SaveWorkTemplateDialog(props: {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="border-border bg-zinc-950 text-foreground">
+      <DialogContent className="border-border bg-background text-foreground">
         <DialogHeader>
           <DialogTitle>Save as work template</DialogTitle>
           <DialogDescription className="space-y-2 text-muted-foreground">

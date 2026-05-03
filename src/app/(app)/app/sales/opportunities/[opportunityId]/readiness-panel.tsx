@@ -2,9 +2,9 @@ import type { QuoteDraftReadinessItem } from "@/server/phase1/readiness";
 import { allQuoteDraftBlockersPass } from "@/server/phase1/readiness";
 
 function statusStyle(s: QuoteDraftReadinessItem["status"]) {
-  if (s === "PASS") return "text-emerald-400";
+  if (s === "PASS") return "text-emerald-700 dark:text-emerald-400";
   if (s === "FAIL") return "text-destructive";
-  if (s === "WAIVED") return "text-amber-400";
+  if (s === "WAIVED") return "text-amber-800 dark:text-amber-400";
   return "text-muted-foreground";
 }
 
@@ -16,7 +16,9 @@ export function ReadinessPanel(props: { items: QuoteDraftReadinessItem[] }) {
         <h2 className="text-sm font-semibold text-foreground">Readiness for quote workspace</h2>
         <span
           className={`rounded-sm border px-2 py-0.5 text-xs font-medium ${
-            ready ? "border-emerald-500/40 text-emerald-400" : "border-border text-muted-foreground"
+            ready
+              ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-400"
+              : "border-border text-muted-foreground"
           }`}
         >
           {ready ? "Checks satisfied" : "Action required"}

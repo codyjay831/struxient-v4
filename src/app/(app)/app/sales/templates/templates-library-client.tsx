@@ -123,8 +123,8 @@ function isTaskOnlyPreview(
 
 function InternalBlock({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-sm border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-100/90">
-      <p className="font-semibold uppercase tracking-wide text-amber-200/90">{label}</p>
+    <div className="rounded-sm border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-900/90 dark:text-amber-100/90">
+      <p className="font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200/90">{label}</p>
       <div className="mt-1 text-muted-foreground">{children}</div>
     </div>
   );
@@ -135,7 +135,7 @@ function PreviewBody({ preview }: { preview: WorkTemplateLibraryPreview }) {
     const { line, stages } = preview.payload;
       return (
         <div className="space-y-4 text-sm">
-          <div className="rounded-sm border border-border bg-zinc-900/50 p-3">
+          <div className="rounded-sm border border-border bg-muted/40 p-3">
             <p className="text-[11px] font-semibold uppercase text-muted-foreground">Line defaults</p>
             <p className="mt-1 font-medium text-foreground">{line.title}</p>
             <p className="mt-1 text-muted-foreground">{line.customerDescription}</p>
@@ -164,7 +164,7 @@ function PreviewBody({ preview }: { preview: WorkTemplateLibraryPreview }) {
                       <li key={j} className="text-xs text-muted-foreground">
                         <span className="font-medium text-foreground">{tk.title}</span>
                         {tk.internalNotes ? (
-                          <span className="ml-2 text-amber-200/80">· internal note</span>
+                          <span className="ml-2 text-amber-900/80 dark:text-amber-200/80">· internal note</span>
                         ) : null}
                       </li>
                     ))}
@@ -180,7 +180,7 @@ function PreviewBody({ preview }: { preview: WorkTemplateLibraryPreview }) {
     const { stage, tasks } = preview.payload;
       return (
         <div className="space-y-3 text-sm">
-          <div className="rounded-sm border border-border bg-zinc-900/50 p-3">
+          <div className="rounded-sm border border-border bg-muted/40 p-3">
             <p className="text-[11px] font-semibold uppercase text-muted-foreground">Stage</p>
             <p className="mt-1 font-medium text-foreground">{stage.title}</p>
             {stage.internalNotes ? (
@@ -211,7 +211,7 @@ function PreviewBody({ preview }: { preview: WorkTemplateLibraryPreview }) {
   if (isTaskOnlyPreview(preview)) {
     const tk = preview.payload.task;
       return (
-        <div className="rounded-sm border border-border bg-zinc-900/50 p-3 text-sm">
+        <div className="rounded-sm border border-border bg-muted/40 p-3 text-sm">
           <p className="text-[11px] font-semibold uppercase text-muted-foreground">Task</p>
           <p className="mt-1 font-medium text-foreground">{tk.title}</p>
           {tk.description ? <p className="mt-1 text-muted-foreground">{tk.description}</p> : null}
@@ -453,7 +453,7 @@ export function TemplatesLibraryClient(props: TemplatesLibrarySerializedProps) {
           )}
 
           <Dialog open={editOpen} onOpenChange={setEditOpen}>
-            <DialogContent className="max-w-lg border-border bg-zinc-950 text-foreground">
+            <DialogContent className="max-w-lg border-border bg-background text-foreground">
               {detailOk && detail ? (
                 <>
                   <DialogHeader>
@@ -498,7 +498,7 @@ export function TemplatesLibraryClient(props: TemplatesLibrarySerializedProps) {
           </Dialog>
 
           <Dialog open={confirmArchiveOpen} onOpenChange={setConfirmArchiveOpen}>
-            <DialogContent className="max-w-md border-border bg-zinc-950 text-foreground">
+            <DialogContent className="max-w-md border-border bg-background text-foreground">
               <DialogHeader>
                 <DialogTitle>Archive template</DialogTitle>
                 <DialogDescription className="text-muted-foreground">

@@ -186,7 +186,7 @@ export function JobTaskStatusForm(props: {
 
       {reqInvalid ? (
 
-        <p className="text-amber-200/90">
+        <p className="text-amber-900/90 dark:text-amber-200/90">
 
           Completion requirement configuration is invalid. Completion is blocked until office staff corrects this
 
@@ -302,7 +302,7 @@ export function JobTaskStatusForm(props: {
 
             {task.internalNotes ? (
 
-              <p className="text-xs leading-relaxed text-amber-200/80">
+              <p className="text-xs leading-relaxed text-amber-900/80 dark:text-amber-200/80">
 
                 <span className="font-medium text-foreground/90">Internal: </span>
 
@@ -404,7 +404,7 @@ export function JobTaskStatusForm(props: {
 
           {task.internalNotes ? (
 
-            <p className="text-xs leading-relaxed text-amber-200/80">
+            <p className="text-xs leading-relaxed text-amber-900/80 dark:text-amber-200/80">
 
               <span className="font-medium text-foreground/90">Internal: </span>
 
@@ -510,7 +510,7 @@ export function JobTaskStatusForm(props: {
 
           <div className="w-full space-y-2 rounded-sm border border-amber-500/30 bg-amber-500/5 p-3">
 
-            <p className="text-xs font-medium text-amber-100">Management completion override</p>
+            <p className="text-xs font-medium text-amber-900 dark:text-amber-100">Management completion override</p>
 
             <p className="text-[11px] leading-relaxed text-muted-foreground">
 
