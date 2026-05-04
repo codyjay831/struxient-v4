@@ -26,7 +26,10 @@ export const jobWorkspaceInclude = {
       stages: {
         orderBy: { sortOrder: "asc" as const },
         include: {
-          tasks: { orderBy: { sortOrder: "asc" as const } },
+          tasks: {
+            where: { archivedAt: null },
+            orderBy: { sortOrder: "asc" as const },
+          },
         },
       },
     },

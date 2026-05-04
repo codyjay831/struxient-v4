@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import bcrypt from "bcryptjs";
 import {
   CustomerContactType,
+  JobStatus,
   JobTaskStatus,
   MembershipRole,
   OpportunityPriority,
@@ -26,9 +27,10 @@ import {
   quoteMutationMarkSent,
 } from "@/server/phase2/quote-mutations";
 import {
-  quoteMutationActivateAcceptedQuoteAsJob,
+  quoteMutationInitializeJobFromAcceptedQuote,
   quoteMutationMarkAccepted,
 } from "@/server/phase4/quote-accept-activate";
+import { jobMutationActivateExecution } from "@/server/phase4/job-activation";
 import { jobMutationUpdateTaskStatus } from "@/server/phase4/job-mutations";
 import { getWorkStationFeed } from "@/server/phase6/work-station-feed";
 
@@ -287,12 +289,104 @@ describe("Work Station feed (integration)", () => {
 
     await quoteMutationMarkAccepted(salesCtxA, fd({ quoteId }));
 
+    // Add a task to the quote AFTER acceptance so the resulting job has tasks (required for activation)
+    // We do this by tampering with the sent snapshot directly
+    const row = await prisma.quote.findUniqueOrThrow({ where: { id: quoteId }, include: { lineItems: true } });
+    const lineId = row.lineItems[0].id;
+    const stage = await prisma.quoteLineExecutionStage.create({
+      data: { organizationId: orgAId, quoteLineItemId: lineId, title: "Stage", sortOrder: 1 },
+    });
+    const qTask = await prisma.quoteLineExecutionTask.create({
+      data: { organizationId: orgAId, stageId: stage.id, title: "Task", sortOrder: 1 },
+    });
+    // Re-save snapshot with the new task
+    const { sentQuoteSnapshotV2Schema } = await import("@/server/phase2/customer-preview");
+    const snap = sentQuoteSnapshotV2Schema.parse(row.sentSnapshotJson);
+    const updatedSnap = {
+      ...snap,
+      version: 2,
+      internalExecutionPlan: {
+        ...snap.internalExecutionPlan,
+        lines: snap.internalExecutionPlan.lines.map((l) =>
+          l.quoteLineItemId === lineId
+            ? {
+                ...l,
+                stages: [
+                  {
+                    id: stage.id,
+                    title: "Stage",
+                    sortOrder: 1,
+                    tasks: [
+                      {
+                        id: qTask.id,
+                        title: "Task",
+                        status: "NOT_STARTED",
+                        isRequired: false,
+                        sortOrder: 1,
+                        customerVisible: false,
+                      },
+                    ],
+                  },
+                ],
+              }
+            : l,
+        ),
+      },
+    };
+    await prisma.quote.update({
+      where: { id: quoteId },
+      data: { sentSnapshotJson: JSON.parse(JSON.stringify(updatedSnap)) },
+    });
+
     const officeAcc = await getWorkStationFeed(officeCtxA, { source: "quotes", category: "now" });
+    // Note: After Phase 1, ACCEPTED quote still shows 'activate' card (which now means Initialize Job)
     expect(officeAcc.cards.some((x) => x.id === `QUOTE:${quoteId}:activate`)).toBe(true);
 
     const salesAcc = await getWorkStationFeed(salesCtxA, { source: "quotes", category: "all" });
+    // Sales role doesn't see 'activate' button, but sees 'accepted' status card
     expect(salesAcc.cards.some((x) => x.id === `QUOTE:${quoteId}:activate`)).toBe(false);
     expect(salesAcc.cards.some((x) => x.id === `QUOTE:${quoteId}:accepted`)).toBe(true);
+
+    // Create job (Review state)
+    const initRes = await quoteMutationInitializeJobFromAcceptedQuote(officeCtxA, fd({ quoteId }));
+    if (!initRes.ok) {
+      console.log("DEBUG: initialize failed", JSON.stringify(initRes, null, 2));
+    }
+    expect(initRes.ok).toBe(true);
+    if (!initRes.ok || !initRes.jobId) throw new Error("initialize");
+
+    // After job is initialized, the QUOTE:activate card should disappear from office NOW feed
+    // Wait a moment for any potential async updates or cache issues (though integration tests are usually direct)
+    const officeAfterInit = await getWorkStationFeed(officeCtxA, { source: "all", category: "all" });
+    // We check for any card with this quote ID that might be 'activate' or 'accepted'
+    const quoteCardsAfterInit = officeAfterInit.cards.filter((x) => x.sourceType === "QUOTE" && x.sourceId === quoteId);
+    expect(quoteCardsAfterInit.some((x) => x.id.endsWith(":activate"))).toBe(false);
+
+    const { cards: officeReviewCards } = await getWorkStationFeed(officeCtxA, { source: "jobs", category: "now" });
+    const planningCard = officeReviewCards.find((x) => x.id.endsWith(":planning"));
+    expect(planningCard).toBeDefined();
+    expect(planningCard?.statusLabel).toMatch(/work plan review/i);
+
+    const { cards: crewReviewCards } = await getWorkStationFeed(crewCtxA, { source: "jobs", category: "all" });
+    expect(crewReviewCards.length).toBe(0);
+
+    // Activate execution
+    const activateRes = await jobMutationActivateExecution(officeCtxA, fd({ jobId: initRes.jobId }));
+    expect(activateRes.ok).toBe(true);
+    if (!activateRes.ok) throw new Error("activate");
+
+    // Manually set the task to READY so it shows up in the 'NOW' feed
+    const jt = await prisma.jobTask.findFirstOrThrow({ where: { jobId: initRes.jobId } });
+    await prisma.jobTask.update({ where: { id: jt.id }, data: { status: JobTaskStatus.READY } });
+
+    const { cards: officeActiveCards } = await getWorkStationFeed(officeCtxA, { source: "all", category: "all" });
+    const planningCardAfter = officeActiveCards.find((x) => x.id.endsWith(":planning"));
+    expect(planningCardAfter).toBeUndefined();
+
+    // Job should now show up in normal feed (e.g. as ready or next_required)
+    const activeJobCard = officeActiveCards.find((x) => x.sourceId === initRes.jobId);
+    expect(activeJobCard).toBeDefined();
+    expect(activeJobCard?.statusLabel).not.toMatch(/work plan review/i);
   });
 
   it("READY opportunity task maps to NOW with opportunity deep link", async () => {
@@ -371,10 +465,14 @@ describe("Work Station feed (integration)", () => {
     await quoteMutationMarkReadyToSend(salesCtxA, fd({ quoteId }));
     await quoteMutationMarkSent(salesCtxA, fd({ quoteId }));
     await quoteMutationMarkAccepted(salesCtxA, fd({ quoteId }));
-    const act = await quoteMutationActivateAcceptedQuoteAsJob(officeCtxA, fd({ quoteId }));
+    const act = await quoteMutationInitializeJobFromAcceptedQuote(officeCtxA, fd({ quoteId }));
     expect(act.ok).toBe(true);
     if (!act.ok) return;
     const job = await prisma.job.findUniqueOrThrow({ where: { quoteId } });
+
+    // Manually activate for feed test
+    await prisma.job.update({ where: { id: job.id }, data: { status: JobStatus.ACTIVE, activatedAt: new Date() } });
+
     const task = await prisma.jobTask.findFirstOrThrow({ where: { jobId: job.id } });
 
     const block = await jobMutationUpdateTaskStatus(

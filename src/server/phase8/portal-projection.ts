@@ -10,6 +10,13 @@ import {
 import { prisma } from "@/lib/prisma";
 import { formatContactType } from "@/lib/format-enums";
 import { parseSentSnapshotPreviewDto } from "@/server/phase2/customer-preview";
+import {
+  buildPortalWhatHappensNext,
+  customerPortalQuoteStatusLabel,
+  mapJobStatusForCustomer,
+  mapJobTaskStatusForCustomer,
+  mapScheduledWorkStatusForCustomer,
+} from "@/server/phase8/portal-customer-copy";
 import { hashPortalToken } from "@/server/phase8/portal-token-crypto";
 import {
   portalViewDTOSchema,
@@ -23,63 +30,16 @@ import { signScheduleActionRef } from "@/server/phase10/schedule-action-ref-cryp
 
 const POST_SEND: QuoteStatus[] = [QuoteStatus.SENT, QuoteStatus.ACCEPTED, QuoteStatus.ACTIVATED];
 
-export function mapJobStatusForCustomer(status: JobStatus): string {
-  switch (status) {
-    case JobStatus.ACTIVE:
-      return "In progress";
-    case JobStatus.PAUSED:
-      return "Temporarily paused";
-    case JobStatus.COMPLETED:
-      return "Completed";
-    case JobStatus.CANCELED:
-      return "Canceled";
-    default:
-      return "In progress";
-  }
-}
-
-export function mapJobTaskStatusForCustomer(status: JobTaskStatus): string {
-  switch (status) {
-    case JobTaskStatus.NOT_STARTED:
-      return "Not started";
-    case JobTaskStatus.READY:
-      return "Ready";
-    case JobTaskStatus.IN_PROGRESS:
-      return "In progress";
-    case JobTaskStatus.BLOCKED:
-      return "Waiting";
-    case JobTaskStatus.COMPLETE:
-      return "Complete";
-    default:
-      return "In progress";
-  }
-}
-
-export function mapScheduledWorkStatusForCustomer(status: ScheduledWorkStatus): string {
-  switch (status) {
-    case ScheduledWorkStatus.SCHEDULED:
-      return "Scheduled";
-    case ScheduledWorkStatus.COMPLETED:
-      return "Completed";
-    case ScheduledWorkStatus.CANCELED:
-      return "Canceled";
-    default:
-      return "Scheduled";
-  }
-}
-
-function customerQuoteStatusLabel(status: QuoteStatus): string {
-  switch (status) {
-    case QuoteStatus.SENT:
-      return "Proposal sent";
-    case QuoteStatus.ACCEPTED:
-      return "Proposal accepted";
-    case QuoteStatus.ACTIVATED:
-      return "Work underway";
-    default:
-      return "Proposal";
-  }
-}
+export {
+  buildPortalWhatHappensNext,
+  customerPortalQuoteStatusLabel,
+  isJobExecutionLiveForCustomerPortal,
+  isJobPendingActivationPortal,
+  mapJobStatusForCustomer,
+  mapJobTaskStatusForCustomer,
+  mapScheduledWorkStatusForCustomer,
+  PORTAL_JOB_PENDING_ACTIVATION_STATUS_VALUE,
+} from "@/server/phase8/portal-customer-copy";
 
 function buildContactLines(
   methods: { type: string; value: string; label: string | null; isPrimary: boolean }[],
@@ -100,43 +60,6 @@ function milestoneSortKey(t: {
   jobStage: { sortOrder: number };
 }): number {
   return t.jobLine.sortOrder * 10_000 + t.jobStage.sortOrder * 100 + t.sortOrder;
-}
-
-function buildWhatHappensNext(params: {
-  quoteStatus: QuoteStatus;
-  jobStatus: JobStatus | null;
-  scheduleCount: number;
-}): string {
-  const { quoteStatus, jobStatus, scheduleCount } = params;
-
-  if (jobStatus === JobStatus.COMPLETED) {
-    return "Your project is complete. Thank you for working with us.";
-  }
-  if (jobStatus === JobStatus.CANCELED) {
-    return "This project is no longer active. Please contact the office if you have questions.";
-  }
-  if (jobStatus === JobStatus.PAUSED) {
-    return "Work on this project is temporarily paused. The office will reach out when activity resumes.";
-  }
-
-  if (jobStatus === JobStatus.ACTIVE) {
-    if (scheduleCount > 0) {
-      return "Your upcoming appointment is listed below. Times are subject to office confirmation.";
-    }
-    return "We will update this page when work is scheduled.";
-  }
-
-  if (quoteStatus === QuoteStatus.SENT) {
-    return "Review is in progress. Contact the office with any questions about your proposal.";
-  }
-  if (quoteStatus === QuoteStatus.ACCEPTED) {
-    return "Your proposal is accepted. We will update this page as work is scheduled.";
-  }
-  if (quoteStatus === QuoteStatus.ACTIVATED) {
-    return "We will update this page as work progresses.";
-  }
-
-  return "We will update this page as work progresses.";
 }
 
 /**
@@ -165,11 +88,6 @@ export async function getPortalViewByRawToken(rawToken: string): Promise<PortalV
   const preview = parseSentSnapshotPreviewDto(quoteRow.sentSnapshotJson);
   if (!preview) return null;
 
-  const portalQuote = {
-    ...preview,
-    statusLabel: customerQuoteStatusLabel(quoteRow.status),
-  };
-
   const effectiveJobId = row.jobId ?? quoteRow.jobId ?? null;
   let project: PortalProjectDTO | undefined;
   let schedule: PortalScheduleItemDTO[] = [];
@@ -194,7 +112,12 @@ export async function getPortalViewByRawToken(rawToken: string): Promise<PortalV
     resolvedJobStatus = job.status;
 
     const tasks = await prisma.jobTask.findMany({
-      where: { organizationId: row.organizationId, jobId: job.id, customerVisible: true },
+      where: {
+        organizationId: row.organizationId,
+        jobId: job.id,
+        customerVisible: true,
+        archivedAt: null,
+      },
       select: {
         customerLabel: true,
         status: true,
@@ -307,6 +230,14 @@ export async function getPortalViewByRawToken(rawToken: string): Promise<PortalV
     });
   }
 
+  const portalQuote = {
+    ...preview,
+    statusLabel: customerPortalQuoteStatusLabel(quoteRow.status, {
+      hasLinkedJob: Boolean(effectiveJobId),
+      jobStatus: resolvedJobStatus,
+    }),
+  };
+
   const serviceAddressSummary = preview.serviceAddressSummary?.trim() || undefined;
   const projectTitle =
     project?.title?.trim() ||
@@ -321,7 +252,7 @@ export async function getPortalViewByRawToken(rawToken: string): Promise<PortalV
     contactLines: buildContactLines(row.customer.contactMethods),
   };
 
-  const whatHappensNext = buildWhatHappensNext({
+  const whatHappensNext = buildPortalWhatHappensNext({
     quoteStatus: quoteRow.status,
     jobStatus: resolvedJobStatus,
     scheduleCount: schedule.length,

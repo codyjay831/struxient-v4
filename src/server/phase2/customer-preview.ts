@@ -159,7 +159,10 @@ export const sentQuoteSnapshotV1Schema = z.object({
 
 export type SentQuoteSnapshotV1 = z.infer<typeof sentQuoteSnapshotV1Schema>;
 
-/** Frozen internal line execution graph for future job seeding (staff-only; not customer-facing). */
+/**
+ * Proposed line/stage/task seed embedded in sent snapshot v2 (staff-only traceability; not customer-facing).
+ * Operational truth is edited on the job until activation; `activationBaselineJson` is the execution baseline.
+ */
 const sentInternalExecutionTaskSnapshotSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -172,7 +175,7 @@ const sentInternalExecutionTaskSnapshotSchema = z.object({
   customerVisible: z.boolean(),
   customerLabel: z.string().nullable().optional(),
   internalNotes: z.string().nullable().optional(),
-  /** Frozen planned evidence completion gate (Phase 13 v1). Omitted on legacy v2 snapshots. */
+  /** Proposed evidence completion gate (Phase 13 v1) at send. Omitted on legacy v2 snapshots. */
   completionRequirementsJson: z.union([z.null(), completionRequirementsV1Schema]).optional(),
 });
 
@@ -197,7 +200,7 @@ export const sentInternalExecutionPlanSchema = z.object({
 
 export type SentInternalExecutionPlan = z.infer<typeof sentInternalExecutionPlanSchema>;
 
-/** Full v2 sent snapshot: customer preview plus internal execution plan. */
+/** Full v2 sent snapshot: frozen customer/commercial preview plus proposed internal work-plan seed (not portal-facing). */
 export const sentQuoteSnapshotV2Schema = z.object({
   version: z.literal(2),
   sentAt: z.string(),
@@ -236,8 +239,8 @@ export type LineItemForInternalExecutionSnapshot = Pick<QuoteLineItem, "id" | "t
 };
 
 /**
- * Builds the internal execution snapshot from live line rows (non-removed lines only).
- * Tasks always live under a stage in the Phase 2B model — this structure preserves that invariant for job seeding.
+ * Builds the proposed work-plan seed from live line rows (non-removed lines only) at send.
+ * Tasks always live under a stage — structure is copied into the job on create; staff refine on Work Plan Review until activation.
  */
 export function buildInternalExecutionPlanFromLineItems(
   lineItems: LineItemForInternalExecutionSnapshot[],
@@ -280,7 +283,7 @@ export function buildInternalExecutionPlanFromLineItems(
   return { lines };
 }
 
-/** Parse nested `preview` from `sentSnapshotJson` (integrity / frozen workspace). Supports v1 and v2. */
+/** Parse nested `preview` from `sentSnapshotJson` (frozen customer/commercial view). Supports v1 and v2. */
 export function parseSentSnapshotPreviewDto(sentSnapshotJson: unknown): QuoteCustomerPreviewDTO | null {
   if (sentSnapshotJson == null || typeof sentSnapshotJson !== "object") return null;
   const raw = sentSnapshotJson as { version?: unknown; preview?: unknown };
@@ -292,7 +295,7 @@ export function parseSentSnapshotPreviewDto(sentSnapshotJson: unknown): QuoteCus
   return r.success ? r.data : null;
 }
 
-/** Parse internal execution plan from a v2 SENT snapshot; v1 returns null. */
+/** Parse proposed work-plan seed (`internalExecutionPlan`) from a v2 SENT snapshot; v1 returns null. */
 export function parseSentSnapshotInternalExecutionPlan(sentSnapshotJson: unknown): SentInternalExecutionPlan | null {
   if (sentSnapshotJson == null || typeof sentSnapshotJson !== "object") return null;
   const raw = sentSnapshotJson as { version?: unknown };
@@ -329,7 +332,7 @@ export type QuotePreviewWorkspaceResolution =
 
 /**
 
- * Workspace preview: non-SENT uses live builder; SENT uses frozen snapshot only (no live fallback).
+ * Workspace preview: non-SENT uses live builder; SENT+ uses frozen customer preview from snapshot only (no live fallback).
 
  */
 

@@ -40,7 +40,7 @@ import {
   quoteMutationSaveStageAsTemplate,
 } from "@/server/phase3/template-mutations";
 import {
-  quoteMutationActivateAcceptedQuoteAsJob,
+  quoteMutationInitializeJobFromAcceptedQuote,
   quoteMutationMarkAccepted,
 } from "@/server/phase4/quote-accept-activate";
 import {
@@ -319,7 +319,7 @@ export async function activateAcceptedQuoteAsJob(
   formData: FormData,
 ): Promise<QuoteActionResult> {
   const ctx = await requireOrgSession();
-  const r = await quoteMutationActivateAcceptedQuoteAsJob(ctx, formData);
+  const r = await quoteMutationInitializeJobFromAcceptedQuote(ctx, formData);
   if (r.ok && r.quoteId) {
     revalidateQuote(r.quoteId);
     revalidatePath("/app/jobs");

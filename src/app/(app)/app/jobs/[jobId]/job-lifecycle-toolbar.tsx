@@ -3,7 +3,7 @@
 import { JobStatus } from "@prisma/client";
 import { useActionState, useEffect, useState } from "react";
 import type { JobLifecycleActionResult } from "@/app/(app)/app/jobs/[jobId]/action-types";
-import { cancelJob, completeJob, pauseJob, resumeJob } from "@/app/(app)/app/jobs/[jobId]/actions";
+import { activateJobExecution, cancelJob, completeJob, pauseJob, resumeJob } from "@/app/(app)/app/jobs/[jobId]/actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -45,8 +45,13 @@ function FieldErrors({ state }: { state: JobLifecycleActionResult | undefined })
   );
 }
 
-export function JobLifecycleToolbar(props: { jobId: string; status: JobStatus }) {
-  const { jobId, status } = props;
+export function JobLifecycleToolbar(props: {
+  jobId: string;
+  status: JobStatus;
+  /** Client-side hint only; server still validates activation. */
+  activateGuard?: { disabled: boolean; reason: string | null };
+}) {
+  const { jobId, status, activateGuard } = props;
   const [pauseOpen, setPauseOpen] = useState(false);
   const [resumeOpen, setResumeOpen] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
@@ -56,6 +61,7 @@ export function JobLifecycleToolbar(props: { jobId: string; status: JobStatus })
   const [resumeState, resumeAction] = useActionState(resumeJob, undefined);
   const [completeState, completeAction] = useActionState(completeJob, undefined);
   const [cancelState, cancelAction] = useActionState(cancelJob, undefined);
+  const [activateState, activateAction] = useActionState(activateJobExecution, undefined);
 
   useEffect(() => {
     if (pauseState?.ok) {
@@ -80,6 +86,50 @@ export function JobLifecycleToolbar(props: { jobId: string; status: JobStatus })
 
   return (
     <div className="flex min-w-0 flex-wrap gap-2">
+      {status === JobStatus.WORK_PLAN_REVIEW ? (
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              disabled={Boolean(activateGuard?.disabled)}
+              title={activateGuard?.disabled ? activateGuard?.reason ?? undefined : undefined}
+              className="rounded-[5px] bg-primary font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+            >
+              Activate execution
+            </Button>
+          </DialogTrigger>
+          <DialogContent className={workspaceDialogContentClass()}>
+            <DialogHeader>
+              <DialogTitle>Activate job execution</DialogTitle>
+              <DialogDescription className="text-muted-foreground dark:text-zinc-500">
+                Saves the current work plan as the activation baseline and moves the job to active execution. Field roles
+                can see and work tasks only after this step.
+              </DialogDescription>
+            </DialogHeader>
+            {activateGuard?.disabled && activateGuard.reason ? (
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-400" role="status">
+                {activateGuard.reason}
+              </p>
+            ) : null}
+            <form action={activateAction} className="space-y-4">
+              <input type="hidden" name="jobId" value={jobId} />
+              <LifecycleFormFeedback state={activateState} />
+              <DialogFooter>
+                <Button
+                  type="submit"
+                  className="rounded-[5px] font-semibold"
+                  disabled={Boolean(activateGuard?.disabled)}
+                >
+                  Confirm activation
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
       {status === JobStatus.ACTIVE ? (
         <Dialog open={pauseOpen} onOpenChange={setPauseOpen}>
           <DialogTrigger asChild>

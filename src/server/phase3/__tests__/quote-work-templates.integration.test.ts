@@ -55,9 +55,10 @@ import {
 } from "@/server/phase3/template-queries";
 import { parseTaskOnlyPayload, TEMPLATE_PAYLOAD_VERSION, validatePayloadForKind } from "@/server/phase3/template-payloads";
 import {
-  quoteMutationActivateAcceptedQuoteAsJob,
+  quoteMutationInitializeJobFromAcceptedQuote,
   quoteMutationMarkAccepted,
 } from "@/server/phase4/quote-accept-activate";
+import { jobMutationActivateExecution } from "@/server/phase4/job-activation";
 
 config({ path: ".env" });
 
@@ -1078,11 +1079,16 @@ describe("Phase 3A quote work templates (integration)", () => {
 
       const acc = await quoteMutationMarkAccepted(salesCtxA, fd({ quoteId }));
       expect(acc.ok).toBe(true);
-      const act = await quoteMutationActivateAcceptedQuoteAsJob(officeCtxA, fd({ quoteId }));
-      expect(act.ok).toBe(true);
-      if (!act.ok || !act.jobId) throw new Error("activate");
+      const initRes = await quoteMutationInitializeJobFromAcceptedQuote(officeCtxA, fd({ quoteId }));
+      expect(initRes.ok).toBe(true);
+      if (!initRes.ok || !initRes.jobId) throw new Error("initialize");
+
+      // Activate for execution
+      const actRes = await jobMutationActivateExecution(officeCtxA, fd({ jobId: initRes.jobId }));
+      expect(actRes.ok).toBe(true);
+
       const jt = await prisma.jobTask.findFirst({
-        where: { organizationId: orgAId, jobId: act.jobId, title: "Activation gate task" },
+        where: { organizationId: orgAId, jobId: initRes.jobId, title: "Activation gate task" },
       });
       expect(jt?.completionRequirementsJson).toEqual({
         version: 1,

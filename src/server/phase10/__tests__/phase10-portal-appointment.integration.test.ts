@@ -27,7 +27,11 @@ import {
   quoteMutationMarkReadyToSend,
   quoteMutationMarkSent,
 } from "@/server/phase2/quote-mutations";
-import { quoteMutationActivateAcceptedQuoteAsJob, quoteMutationMarkAccepted } from "@/server/phase4/quote-accept-activate";
+import {
+  quoteMutationInitializeJobFromAcceptedQuote,
+  quoteMutationMarkAccepted,
+} from "@/server/phase4/quote-accept-activate";
+import { jobMutationActivateExecution } from "@/server/phase4/job-activation";
 import { getPortalViewByRawToken } from "@/server/phase8/portal-projection";
 import { hashPortalToken } from "@/server/phase8/portal-token-crypto";
 import { createPortalAccessTokenForQuote, revokeActivePortalTokenForQuote } from "@/server/phase8/portal-token-mutations";
@@ -205,11 +209,16 @@ describe("Phase 10 portal appointment + rate limit (integration)", () => {
     await quoteMutationMarkReadyToSend(salesCtxA, fd({ quoteId }));
     await quoteMutationMarkSent(salesCtxA, fd({ quoteId }));
     await quoteMutationMarkAccepted(salesCtxA, fd({ quoteId }));
-    const act = await quoteMutationActivateAcceptedQuoteAsJob(officeCtxA, fd({ quoteId }));
-    expect(act.ok).toBe(true);
-    if (!act.ok) throw new Error("activate");
-    const jobId = act.jobId;
-    if (!jobId) throw new Error("jobId");
+    const initRes = await quoteMutationInitializeJobFromAcceptedQuote(officeCtxA, fd({ quoteId }));
+    expect(initRes.ok).toBe(true);
+    if (!initRes.ok || !initRes.jobId) throw new Error("initialize");
+
+    // Activate for execution
+    const activateRes = await jobMutationActivateExecution(officeCtxA, fd({ jobId: initRes.jobId }));
+    expect(activateRes.ok).toBe(true);
+    if (!activateRes.ok) throw new Error("activate");
+
+    const jobId = initRes.jobId;
 
     const tasks = await prisma.jobTask.findMany({ where: { jobId }, orderBy: { sortOrder: "asc" } });
     const t0 = tasks[0]!;

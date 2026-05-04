@@ -31,7 +31,13 @@ export type JobTaskRowModel = {
   internalNotes: string | null;
   isRequired: boolean;
   assignedRole: string | null;
+  /** Present when loaded from job workspace (work plan review badges). */
+  sourceQuoteTaskId?: string | null;
+  /** Stage ordering for planner adapters / reorder UI. */
+  sortOrder: number;
   estimatedDurationMinutes: number | null;
+  customerVisible: boolean;
+  customerLabel: string | null;
   status: JobTaskStatus;
   blockedReason: string | null;
   linkedEvidenceCount?: number;

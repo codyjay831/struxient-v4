@@ -2,7 +2,6 @@
 
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   CustomerContactType,
   JobStatus,
@@ -73,6 +72,14 @@ import {
   quoteWorkbenchSelectClass,
   quoteWorkbenchTextareaClass,
 } from "./quote-workbench-ui";
+import {
+  workspaceInputClass,
+  workspaceTextareaClass,
+} from "@/components/workspace/workspace-form-controls";
+import { WorkPlanPlannerShell } from "@/components/work-plan/work-plan-planner-shell";
+import { WorkPlanStageShell } from "@/components/work-plan/work-plan-stage-shell";
+import { WorkPlanTaskBadges } from "@/components/work-plan/work-plan-task-badges";
+import { WorkPlanTaskCardShell } from "@/components/work-plan/work-plan-task-card-shell";
 
 export type QuoteWorkspaceDefaultSection = QuoteWorkbenchStep;
 
@@ -371,7 +378,7 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
     lastProposalEmailRecipient,
     defaultExpandedSection,
   } = props;
-  /** True after send through activation: quote structure and commercial snapshot are frozen here. */
+  /** True after send through activation: quote structure and customer/commercial snapshot are locked; proposed plan edits move to the job. */
   const isSent = isQuoteStructurallyLocked(quote.status);
   const preview = previewResolution.kind === "SENT_SNAPSHOT_MISSING" ? null : previewResolution.preview;
   const snapshotIntegrityError = previewResolution.kind === "SENT_SNAPSHOT_MISSING";
@@ -545,10 +552,21 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
           </Button>
         </form>
       ) : null}
-      {quote.job ? (
-        <Link href={`/app/jobs/${quote.job.id}`} className="text-xs font-medium text-primary hover:text-primary/80 dark:text-blue-400 dark:hover:text-blue-300">
-          Open job #{quote.job.displayNumber}
-        </Link>
+      {quote.status === QuoteStatus.ACCEPTED && quote.job?.status === JobStatus.WORK_PLAN_REVIEW ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-muted-foreground dark:text-zinc-500">Job created — work plan review</span>
+          <Link href={`/app/jobs/${quote.job.id}`} className="text-xs font-medium text-primary hover:text-primary/80 dark:text-blue-400 dark:hover:text-blue-300">
+            Open work plan
+          </Link>
+        </div>
+      ) : null}
+      {quote.job && quote.job.status !== JobStatus.WORK_PLAN_REVIEW ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-muted-foreground dark:text-zinc-500">Execution active</span>
+          <Link href={`/app/jobs/${quote.job.id}`} className="text-xs font-medium text-primary hover:text-primary/80 dark:text-blue-400 dark:hover:text-blue-300">
+            Open job #{quote.job.displayNumber}
+          </Link>
+        </div>
       ) : null}
     </div>
   ) : null;
@@ -1216,7 +1234,9 @@ function LineItemExecutionPlanningReadOnly({ line }: { line: QuoteWorkspaceProps
   if (stages.length === 0) return null;
   return (
     <div className="mt-3 border-t border-border/70 pt-3 dark:border-zinc-800/50">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-primary/90 dark:text-blue-400/80">Execution plan (frozen)</p>
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-primary/90 dark:text-blue-400/80">
+        Proposed work plan at send (read-only)
+      </p>
       <ul className="space-y-2 border-l border-primary/20 pl-3 dark:border-blue-500/20">
         {stages.map((s) => {
           const tasks = [...s.tasks].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
@@ -1256,49 +1276,53 @@ function LineItemExecutionPlanning({
 }) {
   const stages = [...line.executionStages].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
   return (
-    <div className="mt-3 space-y-3 border-t border-border/70 pt-3 dark:border-zinc-800/50">
-      <div>
-        <h4 className="text-[10px] font-semibold uppercase tracking-wider text-primary dark:text-blue-400/85">Execution plan for this line</h4>
-        <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground dark:text-zinc-500">
-          Outline of delivery work — stages group tasks. Customer-visible tasks need a label for the internal preview only.
-        </p>
-      </div>
-      {stages.length === 0 ? (
-        <div className="space-y-2 border-l border-dashed border-violet-500/30 py-1 pl-3 dark:border-violet-400/25">
-          <p className="text-xs text-muted-foreground dark:text-zinc-500">
-            No stages yet. Create a stage (for example Permit or Install), then add tasks under that stage.
-          </p>
-          <AddExecutionStageForm
-            quoteId={quoteId}
-            lineItemId={line.id}
-            workTemplates={workTemplates}
-            canManageWorkTemplates={canManageWorkTemplates}
-          />
-        </div>
-      ) : (
-        <ul className="space-y-3 border-l border-primary/20 pl-3 dark:border-blue-500/20">
-          {stages.map((s) => (
-            <LineExecutionStageEditor
-              key={s.id}
+    <div className="mt-3 border-t border-border/70 pt-3 dark:border-zinc-800/50">
+      <WorkPlanPlannerShell
+        title="Proposed work plan"
+        description={
+          <>
+            <p>
+              Stages group tasks for this line. Customer-visible tasks need a label for the internal preview. This plan
+              seeds the job after acceptance; refine it on the job before activation.
+            </p>
+          </>
+        }
+      >
+        {stages.length === 0 ? (
+          <div className="space-y-2 rounded-[5px] border border-dashed border-violet-500/30 bg-muted/5 px-3 py-3 dark:border-violet-400/25 dark:bg-zinc-950/20">
+            <p className="text-xs text-muted-foreground dark:text-zinc-500">
+              No stages yet. Create a stage (for example Permit or Install), then add tasks under that stage.
+            </p>
+            <AddExecutionStageForm
               quoteId={quoteId}
-              lineId={line.id}
-              stage={s}
+              lineItemId={line.id}
               workTemplates={workTemplates}
               canManageWorkTemplates={canManageWorkTemplates}
             />
-          ))}
-        </ul>
-      )}
-      {stages.length > 0 ? (
-        <div className="border-l border-primary/20 pl-3 dark:border-blue-500/20">
+          </div>
+        ) : (
+          <ul className="list-none space-y-4 p-0">
+            {stages.map((s) => (
+              <LineExecutionStageEditor
+                key={s.id}
+                quoteId={quoteId}
+                lineId={line.id}
+                stage={s}
+                workTemplates={workTemplates}
+                canManageWorkTemplates={canManageWorkTemplates}
+              />
+            ))}
+          </ul>
+        )}
+        {stages.length > 0 ? (
           <AddExecutionStageForm
             quoteId={quoteId}
             lineItemId={line.id}
             workTemplates={workTemplates}
             canManageWorkTemplates={canManageWorkTemplates}
           />
-        </div>
-      ) : null}
+        ) : null}
+      </WorkPlanPlannerShell>
     </div>
   );
 }
@@ -1409,12 +1433,6 @@ function AddExecutionStageForm({
   );
 }
 
-function lineExecutionTaskEvidenceLabel(dto: CompletionRequirementDto) {
-  if (dto.state === "active") return `${dto.minAcceptedCount} evidence`;
-  if (dto.state === "invalid") return "Evidence rule invalid";
-  return null;
-}
-
 function LineExecutionStageEditor({
   quoteId,
   lineId,
@@ -1438,117 +1456,115 @@ function LineExecutionStageEditor({
   const requiredCount = tasks.filter((t) => t.isRequired).length;
   const visibleCount = tasks.filter((t) => t.customerVisible).length;
   const notComplete = tasks.filter((t) => t.status !== QuoteTaskStatus.COMPLETE).length;
-  const notesPreview = clipText(stage.internalNotes, 56);
+  const notesPreview = clipText(stage.internalNotes, 72);
 
   return (
     <li className="min-w-0 list-none">
-      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 border-b border-border/35 pb-2 dark:border-zinc-800/40">
-        <div className="min-w-0 flex-1">
-          <p className="min-w-0">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-400/95">Stage</span>
-            <span className="ml-1.5 text-sm font-medium text-foreground dark:text-zinc-100">{stage.title}</span>
-          </p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground dark:text-zinc-500">
-            {tasks.length} task{tasks.length === 1 ? "" : "s"}
-            {requiredCount ? ` · ${requiredCount} required` : ""}
-            {visibleCount ? ` · ${visibleCount} customer-visible` : ""}
-            {tasks.length > 0 ? ` · ${notComplete} not complete` : ""}
-            {notesPreview ? ` · ${notesPreview}` : ""}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 rounded-[5px] px-2 text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-400 dark:hover:text-zinc-200"
-            onClick={() => setEditOpen((v) => !v)}
-          >
-            {editOpen ? "Close" : "Edit stage"}
-          </Button>
-          <SaveWorkTemplateDialog
-            quoteId={quoteId}
-            saveKind="stage"
-            lineItemId={lineId}
-            stageId={stage.id}
-            defaultName={stage.title}
-            trigger={
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 rounded-[5px] px-2 text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
-              >
-                Save as template
-              </Button>
-            }
-          />
-          <form action={rmAct} className="inline">
-            <input type="hidden" name="quoteId" value={quoteId} />
-            <input type="hidden" name="stageId" value={stage.id} />
+      <WorkPlanStageShell>
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b border-border/40 pb-3 dark:border-zinc-800/40">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-400/95">Stage</p>
+            <p className="text-sm font-semibold text-foreground dark:text-zinc-100">{stage.title}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground dark:text-zinc-500">
+              {tasks.length} task{tasks.length === 1 ? "" : "s"}
+              {tasks.length > 0 ? ` · ${requiredCount} required` : ""}
+              {visibleCount ? ` · ${visibleCount} customer-visible` : ""}
+              {tasks.length > 0 ? ` · ${notComplete} not complete` : ""}
+              {notesPreview ? ` · ${notesPreview}` : ""}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
             <Button
-              type="submit"
-              size="sm"
+              type="button"
               variant="ghost"
-              className="h-8 rounded-[5px] px-2 text-[11px] text-destructive hover:text-destructive dark:text-red-400/90 dark:hover:text-red-300"
+              size="sm"
+              className="h-8 rounded-[5px] px-2 text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-400 dark:hover:text-zinc-200"
+              onClick={() => setEditOpen((v) => !v)}
             >
-              Remove
+              {editOpen ? "Close" : "Edit stage"}
             </Button>
-          </form>
-        </div>
-      </div>
-      <ActionError state={rmSt} />
-      {editOpen ? (
-        <div className="mt-2 space-y-3 border-l border-border/50 py-1 pl-3 dark:border-zinc-700/50">
-          <form action={act} className="grid gap-2 md:grid-cols-2">
-            <input type="hidden" name="quoteId" value={quoteId} />
-            <input type="hidden" name="lineItemId" value={lineId} />
-            <input type="hidden" name="stageId" value={stage.id} />
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Stage title</Label>
-              <Input name="title" defaultValue={stage.title} required className={quoteWorkbenchInputClass()} />
-            </div>
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Stage internal notes</Label>
-              <Textarea name="internalNotes" defaultValue={stage.internalNotes ?? ""} rows={2} className={quoteWorkbenchTextareaClass()} />
-            </div>
-            <div className="flex flex-wrap gap-2 md:col-span-2">
+            <SaveWorkTemplateDialog
+              quoteId={quoteId}
+              saveKind="stage"
+              lineItemId={lineId}
+              stageId={stage.id}
+              defaultName={stage.title}
+              trigger={
+                <Button type="button" variant="ghost" size="sm" className="h-8 rounded-[5px] px-2 text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300">
+                  Save as template
+                </Button>
+              }
+            />
+            <form action={rmAct} className="inline">
+              <input type="hidden" name="quoteId" value={quoteId} />
+              <input type="hidden" name="stageId" value={stage.id} />
               <Button
                 type="submit"
                 size="sm"
-                className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80"
+                variant="ghost"
+                className="h-8 rounded-[5px] px-2 text-[11px] text-destructive hover:text-destructive dark:text-red-400/90 dark:hover:text-red-300"
               >
-                Save stage
+                Remove
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 text-xs"
-                onClick={() => setEditOpen(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-            <ActionError state={st} />
-          </form>
+            </form>
+          </div>
         </div>
-      ) : null}
-      <ul className="mt-2 space-y-2 border-l border-dashed border-border/55 pl-3 dark:border-zinc-700/45">
-        {tasks.length === 0 ? (
-          <li className="py-0.5 text-[11px] text-muted-foreground dark:text-zinc-500">No tasks in this stage yet.</li>
-        ) : (
-          tasks.map((t) => <LineExecutionTaskEditor key={t.id} quoteId={quoteId} stageId={stage.id} task={t} />)
-        )}
-      </ul>
-      <div className="mt-2 pl-3">
+        <ActionError state={rmSt} />
+
+        {editOpen ? (
+          <div className="mt-3 space-y-3 border-b border-border/50 pb-4 dark:border-zinc-800/50">
+            <form action={act} className="space-y-2">
+              <input type="hidden" name="quoteId" value={quoteId} />
+              <input type="hidden" name="lineItemId" value={lineId} />
+              <input type="hidden" name="stageId" value={stage.id} />
+              <div className="space-y-1">
+                <Label className="text-[11px]">Stage title</Label>
+                <Input name="title" defaultValue={stage.title} required maxLength={240} className={workspaceInputClass()} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px]">Stage notes (internal)</Label>
+                <Textarea
+                  name="internalNotes"
+                  defaultValue={stage.internalNotes ?? ""}
+                  className={workspaceTextareaClass()}
+                  rows={2}
+                />
+              </div>
+              <ActionError state={st} />
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" size="sm" variant="secondary" className="rounded-[5px]">
+                  Save stage
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="rounded-[5px]" onClick={() => setEditOpen(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </div>
+        ) : null}
+
+        <p className="mt-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground dark:text-zinc-600">
+          Tasks in this stage
+        </p>
+        <ul className="mt-2 list-none space-y-3 p-0">
+          {tasks.length === 0 ? (
+            <li className="list-none">
+              <p className="rounded-[5px] border border-dashed border-border/80 bg-muted/10 px-3 py-4 text-center text-xs text-muted-foreground dark:border-zinc-800/60 dark:bg-zinc-950/30 dark:text-zinc-500">
+                No tasks in this stage yet. Add a task below.
+              </p>
+            </li>
+          ) : (
+            tasks.map((t) => <LineExecutionTaskEditor key={t.id} quoteId={quoteId} stageId={stage.id} task={t} />)
+          )}
+        </ul>
+
         <AddLineExecutionTaskForm
           quoteId={quoteId}
           stageId={stage.id}
           workTemplates={workTemplates}
           canManageWorkTemplates={canManageWorkTemplates}
         />
-      </div>
+      </WorkPlanStageShell>
     </li>
   );
 }
@@ -1633,12 +1649,20 @@ function AddLineExecutionTaskForm({
               <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Description</Label>
               <Textarea name="description" rows={2} className={quoteWorkbenchTextareaClass()} />
             </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Assigned role (optional)</Label>
+              <Input name="assignedRole" maxLength={120} className={quoteWorkbenchInputClass()} placeholder="e.g. CREW_LEAD" />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Estimated duration (minutes)</Label>
+              <Input type="number" name="estimatedDurationMinutes" min={1} className={quoteWorkbenchInputClass()} />
+            </div>
             <label className="flex items-center gap-2 text-xs text-muted-foreground dark:text-zinc-400 md:col-span-2">
-              <input type="checkbox" name="isRequired" />
+              <input type="checkbox" name="isRequired" value="true" />
               Required for readiness (line-level)
             </label>
             <label className="flex items-center gap-2 text-xs text-muted-foreground dark:text-zinc-400 md:col-span-2">
-              <input type="checkbox" name="customerVisible" />
+              <input type="checkbox" name="customerVisible" value="true" />
               Customer-visible (internal preview)
             </label>
             <div className="space-y-1.5 md:col-span-2">
@@ -1683,55 +1707,64 @@ function LineExecutionTaskEditor({
   useEffect(() => {
     if (st?.ok || stStatus?.ok) setDetailOpen(false);
   }, [st?.ok, stStatus?.ok]);
-  const evidenceLabel = lineExecutionTaskEvidenceLabel(task.completionRequirement);
-  const statusShort = task.status.replace(/_/g, " ");
-
-  const badgeClass =
-    "inline-flex max-w-full items-center truncate rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground dark:text-zinc-400";
+  const prepStatusLabel = task.status.replace(/_/g, " ");
+  const descPreview = clipText(task.description, 96);
+  const notesPreview = clipText(task.internalNotes, 72);
 
   return (
-    <li className="min-w-0 list-none border-b border-border/25 pb-2 last:border-b-0 dark:border-zinc-800/30">
-      <div className="flex min-w-0 items-start gap-2">
-        <button
-          type="button"
-          onClick={() => setDetailOpen((o) => !o)}
-          className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-[4px] text-muted-foreground transition hover:bg-muted/60 hover:text-foreground dark:text-zinc-500 dark:hover:bg-zinc-900/60 dark:hover:text-zinc-300"
-          aria-expanded={detailOpen}
-          aria-label={detailOpen ? "Collapse task details" : "Expand task details"}
-        >
-          {detailOpen ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
-        </button>
-        <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground dark:text-zinc-500">Task</p>
-          <p className="truncate text-xs font-medium text-foreground dark:text-zinc-200">{task.title}</p>
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
-            {task.isRequired ? (
-              <span className={badgeClass}>Required</span>
-            ) : (
-              <span className={badgeClass}>Optional</span>
-            )}
-            {task.customerVisible ? <span className={badgeClass}>Customer-visible</span> : null}
-            {task.completionRequirement.state === "invalid" ? (
-              <span className={`${badgeClass} text-amber-800 dark:text-amber-400/90`}>Evidence invalid</span>
-            ) : evidenceLabel ? (
-              <span className={`${badgeClass} text-emerald-800 dark:text-emerald-400/85`}>{evidenceLabel}</span>
+    <li className="min-w-0 list-none">
+      <WorkPlanTaskCardShell>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 space-y-2">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground dark:text-zinc-500">Task</p>
+            <p className="text-sm font-medium text-foreground dark:text-zinc-100">{task.title}</p>
+            <WorkPlanTaskBadges
+              isRequired={task.isRequired}
+              customerVisible={task.customerVisible}
+              completionRequirement={task.completionRequirement}
+              prepStatusLabel={prepStatusLabel}
+            />
+            {descPreview ? (
+              <p className="text-[11px] leading-snug text-muted-foreground dark:text-zinc-500">
+                <span className="font-medium text-foreground/80 dark:text-zinc-400">Instructions: </span>
+                {descPreview}
+              </p>
             ) : null}
-            <span className={`${badgeClass} font-mono normal-case`}>{statusShort}</span>
+            {notesPreview ? (
+              <p className="text-[11px] leading-snug text-muted-foreground dark:text-zinc-500">
+                <span className="font-medium text-foreground/80 dark:text-zinc-400">Internal notes: </span>
+                {notesPreview}
+              </p>
+            ) : null}
+            {task.assignedRole ? (
+              <p className="text-[11px] text-muted-foreground dark:text-zinc-500">
+                <span className="font-medium text-foreground/80 dark:text-zinc-400">Role: </span>
+                {task.assignedRole}
+              </p>
+            ) : null}
+            {task.estimatedDurationMinutes != null ? (
+              <p className="text-[11px] text-muted-foreground dark:text-zinc-500">
+                <span className="font-medium text-foreground/80 dark:text-zinc-400">Est. duration: </span>
+                {task.estimatedDurationMinutes} min
+              </p>
+            ) : null}
+            {task.customerVisible && task.customerLabel ? (
+              <p className="text-[11px] text-muted-foreground dark:text-zinc-500">
+                <span className="font-medium text-foreground/80 dark:text-zinc-400">Portal label: </span>
+                {task.customerLabel}
+              </p>
+            ) : null}
           </div>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 shrink-0 px-2 text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
-          onClick={() => setDetailOpen((o) => !o)}
-        >
-          {detailOpen ? "Close" : "Edit"}
-        </Button>
-      </div>
-      {detailOpen ? (
-        <div className="mt-2 space-y-3 border-l border-border/50 py-1 pl-3 dark:border-zinc-700/45">
-          <div className="flex flex-wrap justify-end">
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-[5px] px-2 text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
+              onClick={() => setDetailOpen((o) => !o)}
+            >
+              {detailOpen ? "Close" : "Edit"}
+            </Button>
             <SaveWorkTemplateDialog
               quoteId={quoteId}
               saveKind="task"
@@ -1739,88 +1772,123 @@ function LineExecutionTaskEditor({
               taskId={task.id}
               defaultName={task.title}
               trigger={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 rounded-[5px] text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300"
-                >
+                <Button type="button" variant="ghost" size="sm" className="h-8 rounded-[5px] px-2 text-[11px] text-muted-foreground hover:text-foreground dark:text-zinc-500 dark:hover:text-zinc-300">
                   Save as template
                 </Button>
               }
             />
           </div>
-          <form action={act} className="grid gap-2 md:grid-cols-2">
-            <input type="hidden" name="quoteId" value={quoteId} />
-            <input type="hidden" name="stageId" value={stageId} />
-            <input type="hidden" name="taskId" value={task.id} />
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Title</Label>
-              <Input name="title" defaultValue={task.title} required className={quoteWorkbenchInputClass()} />
-            </div>
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Description</Label>
-              <Textarea name="description" defaultValue={task.description ?? ""} rows={2} className={quoteWorkbenchTextareaClass()} />
-            </div>
-            <label className="flex items-center gap-2 text-xs text-muted-foreground dark:text-zinc-400">
-              <input type="checkbox" name="isRequired" defaultChecked={task.isRequired} />
-              Required
-            </label>
-            <label className="flex items-center gap-2 text-xs text-muted-foreground dark:text-zinc-400 md:col-span-2">
-              <input type="checkbox" name="customerVisible" defaultChecked={task.customerVisible} />
-              Customer-visible
-            </label>
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Customer label</Label>
-              <Input name="customerLabel" defaultValue={task.customerLabel ?? ""} className={quoteWorkbenchInputClass()} />
-            </div>
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Internal notes</Label>
-              <Textarea name="internalNotes" defaultValue={task.internalNotes ?? ""} rows={2} className={quoteWorkbenchTextareaClass()} />
-            </div>
-            <PlannedTaskEvidenceRequirementFields completionRequirement={task.completionRequirement} />
-            <div className="flex flex-wrap gap-2 md:col-span-2">
-              <Button
-                type="submit"
-                size="sm"
-                className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80"
-              >
-                Save task
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 rounded-[5px] border-input dark:border-zinc-700/80 text-xs"
-                onClick={() => setDetailOpen(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-            <ActionError state={st} />
-          </form>
-          <form action={actStatus} className="flex flex-wrap items-end gap-2 border-t border-border/40 pt-2 dark:border-zinc-800/40">
-            <input type="hidden" name="quoteId" value={quoteId} />
-            <input type="hidden" name="taskId" value={task.id} />
-            <Label className="text-[11px] text-muted-foreground dark:text-zinc-500">Status</Label>
-            <select name="status" defaultValue={task.status} className={quoteWorkbenchSelectClass()}>
-              {Object.values(QuoteTaskStatus).map((s) => (
-                <option key={s} value={s}>
-                  {s.replace(/_/g, " ")}
-                </option>
-              ))}
-            </select>
-            <Button
-              type="submit"
-              size="sm"
-              className="h-8 rounded-[5px] border border-border bg-secondary text-xs text-secondary-foreground hover:bg-secondary/80 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80"
-            >
-              Update status
-            </Button>
-            <ActionError state={stStatus} />
-          </form>
         </div>
-      ) : null}
+
+        {detailOpen ? (
+          <div className="mt-3 space-y-4 border-t border-border/50 pt-3 dark:border-zinc-800/40">
+            <form action={act} className="space-y-2">
+              <input type="hidden" name="quoteId" value={quoteId} />
+              <input type="hidden" name="stageId" value={stageId} />
+              <input type="hidden" name="taskId" value={task.id} />
+              <div className="space-y-1">
+                <Label className="text-[11px]">Task title</Label>
+                <Input name="title" defaultValue={task.title} required maxLength={240} className={workspaceInputClass()} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px]">Instructions / description</Label>
+                <Textarea
+                  name="description"
+                  defaultValue={task.description ?? ""}
+                  rows={3}
+                  className={workspaceTextareaClass()}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px]">Internal notes</Label>
+                <Textarea
+                  name="internalNotes"
+                  defaultValue={task.internalNotes ?? ""}
+                  rows={2}
+                  className={workspaceTextareaClass()}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px]">Assigned role (optional)</Label>
+                <Input
+                  name="assignedRole"
+                  defaultValue={task.assignedRole ?? ""}
+                  maxLength={120}
+                  className={workspaceInputClass()}
+                  placeholder="e.g. CREW_LEAD"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px]">Estimated duration (minutes, optional)</Label>
+                <Input
+                  type="number"
+                  name="estimatedDurationMinutes"
+                  min={1}
+                  defaultValue={task.estimatedDurationMinutes ?? ""}
+                  className={workspaceInputClass()}
+                  placeholder="Leave blank if unknown"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-xs text-foreground dark:text-zinc-200">
+                <input type="checkbox" name="isRequired" value="true" defaultChecked={task.isRequired} className="rounded border-input" />
+                Required task
+              </label>
+              <label className="flex items-center gap-2 text-xs text-foreground dark:text-zinc-200">
+                <input
+                  type="checkbox"
+                  name="customerVisible"
+                  value="true"
+                  defaultChecked={task.customerVisible}
+                  className="rounded border-input"
+                />
+                Customer-visible milestone
+              </label>
+              <p className="text-[10px] text-muted-foreground dark:text-zinc-500">
+                When customer-visible is on, set a short label for the portal preview.
+              </p>
+              <div className="space-y-1">
+                <Label className="text-[11px]">Customer label</Label>
+                <Input
+                  name="customerLabel"
+                  defaultValue={task.customerLabel ?? ""}
+                  maxLength={240}
+                  className={workspaceInputClass()}
+                  placeholder="Shown on portal when visible"
+                />
+              </div>
+              <PlannedTaskEvidenceRequirementFields completionRequirement={task.completionRequirement} />
+              <ActionError state={st} />
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" size="sm" variant="secondary" className="rounded-[5px]">
+                  Save task
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="rounded-[5px]" onClick={() => setDetailOpen(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </form>
+
+            <form action={actStatus} className="flex flex-wrap items-end gap-2 border-t border-border/40 pt-3 dark:border-zinc-800/40">
+              <input type="hidden" name="quoteId" value={quoteId} />
+              <input type="hidden" name="taskId" value={task.id} />
+              <div className="space-y-1">
+                <Label className="text-[11px]">Prep status</Label>
+                <select name="status" defaultValue={task.status} className={quoteWorkbenchSelectClass()}>
+                  {Object.values(QuoteTaskStatus).map((s) => (
+                    <option key={s} value={s}>
+                      {s.replace(/_/g, " ")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button type="submit" size="sm" variant="secondary" className="rounded-[5px]">
+                Update prep status
+              </Button>
+              <ActionError state={stStatus} />
+            </form>
+          </div>
+        ) : null}
+      </WorkPlanTaskCardShell>
     </li>
   );
 }

@@ -13,11 +13,14 @@ import { canCreateCustomerPortalLink, canRevokeOrRegenerateCustomerPortalLink } 
 import { JobScheduleSection } from "@/app/(app)/app/jobs/[jobId]/job-schedule-section";
 import { JobLifecycleToolbar } from "@/app/(app)/app/jobs/[jobId]/job-lifecycle-toolbar";
 import { JobTaskStatusForm, type JobTaskRowModel } from "@/app/(app)/app/jobs/[jobId]/job-task-status-form";
+import { WorkPlanReviewPanels } from "@/app/(app)/app/jobs/[jobId]/work-plan-review-panels";
+import { WorkPlanReviewEditor, type WorkPlanReviewLineModel } from "@/app/(app)/app/jobs/[jobId]/work-plan-review-editor";
 import { TaskScheduleDialog } from "@/app/(app)/app/jobs/[jobId]/task-schedule-dialog";
-import { canUpdateJobTaskStatus, canViewJobsWorkspace } from "@/lib/phase4-permissions";
+import { canEditJobWorkPlanDuringReview, canUpdateJobTaskStatus, canViewJobsWorkspace } from "@/lib/phase4-permissions";
 import { canMutateSchedule, canViewSchedule } from "@/lib/phase7-permissions";
 import { formatJobStatus, formatJobTaskStatus } from "@/lib/format-enums";
 import { canChangeJobStatus, canUpdateJobTaskWhenJobPaused } from "@/lib/phase5-permissions";
+import { prisma } from "@/lib/prisma";
 import { requireOrgSession } from "@/server/phase1/org-session";
 import {
   getJobIdInOrganization,
@@ -25,6 +28,7 @@ import {
   listJobActivityForJob,
   type JobWorkspacePayload,
 } from "@/server/phase4/job-queries";
+import { computeWorkPlanReviewSummary } from "@/server/phase4/work-plan-review-summary";
 import { getJobProgressForJob } from "@/server/phase5/job-progress";
 import {
   canAttachNewScheduleToJob,
@@ -109,7 +113,11 @@ function toJobTaskRowModel(
     internalNotes: task.internalNotes,
     isRequired: task.isRequired,
     assignedRole: task.assignedRole,
+    sourceQuoteTaskId: task.sourceQuoteTaskId,
+    sortOrder: task.sortOrder,
     estimatedDurationMinutes: task.estimatedDurationMinutes,
+    customerVisible: task.customerVisible,
+    customerLabel: task.customerLabel,
     status: task.status,
     blockedReason: task.blockedReason,
     completionRequirement: dto,
@@ -226,6 +234,36 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
   const showSchedule = canViewSchedule(ctx.role);
   const canMutateScheduleRows = canMutateSchedule(ctx.role);
 
+  let workPlanReviewSummary: ReturnType<typeof computeWorkPlanReviewSummary> | null = null;
+  if (workspaceJob.status === JobStatus.WORK_PLAN_REVIEW) {
+    const archivedTaskCount = await prisma.jobTask.count({
+      where: {
+        jobId: workspaceJob.id,
+        organizationId: ctx.organizationId,
+        archivedAt: { not: null },
+      },
+    });
+    workPlanReviewSummary = computeWorkPlanReviewSummary({
+      jobStatus: workspaceJob.status,
+      archivedTaskCount,
+      jobUpdatedAt: workspaceJob.updatedAt,
+      lines: workspaceJob.lines.map((line) => ({
+        stages: line.stages.map((st) => ({
+          id: st.id,
+          tasks: st.tasks.map((t) => ({
+            status: t.status,
+            isRequired: t.isRequired,
+            assignedRole: t.assignedRole,
+            customerVisible: t.customerVisible,
+            customerLabel: t.customerLabel,
+            sourceQuoteTaskId: t.sourceQuoteTaskId,
+            completionRequirementsJson: t.completionRequirementsJson,
+          })),
+        })),
+      })),
+    });
+  }
+
   function scheduleActionForTask(task: {
     id: string;
     title: string;
@@ -267,7 +305,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
 
   const headerDescription = [
     workspaceJob.customer.displayName,
-    `Activated ${workspaceJob.activatedAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`,
+    workspaceJob.activatedAt
+      ? `Activated ${workspaceJob.activatedAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`
+      : "Pending activation",
     `Quote #${workspaceJob.quote.displayNumber}`,
     workspaceJob.opportunityId ? "Opportunity linked" : null,
   ]
@@ -430,6 +470,62 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
         </div>
       ) : null}
 
+      {workspaceJob.status === JobStatus.WORK_PLAN_REVIEW ? (
+        <div
+          className="space-y-3 rounded-[6px] border border-primary/30 bg-primary/5 px-4 py-4 text-sm text-foreground dark:border-blue-900/40 dark:bg-blue-950/25"
+          role="status"
+        >
+          <div>
+            <p className="text-base font-semibold text-primary dark:text-blue-400">Work Plan Review</p>
+            <p className="mt-2 text-sm leading-relaxed text-foreground/90 dark:text-zinc-200">
+              This job was created from the accepted quote. Review this work plan before releasing it to field execution.
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground dark:text-zinc-400">
+              Activation saves the current plan as the baseline. You can still track operational changes after activation
+              (status, evidence, schedule) — the baseline is a snapshot, not a lock on day-to-day work.
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground dark:text-zinc-500">
+              Scheduling and field task execution stay off until you activate. Customer portal still shows
+              high-level &quot;preparing&quot; messaging — not internal plan details.
+            </p>
+          </div>
+          {showLifecycle ? (
+            <div className="rounded-[5px] border border-primary/20 bg-background/60 px-3 py-2.5 dark:border-blue-900/25 dark:bg-zinc-950/40">
+              <p className="text-xs font-semibold text-foreground dark:text-zinc-200">Activate execution</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground dark:text-zinc-400">
+                Releases this job to active execution. Field roles only see executable work after activation. Use the
+                button in Progress &amp; job controls when you are ready.
+              </p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {workspaceJob.status === JobStatus.WORK_PLAN_REVIEW && workPlanReviewSummary ? (
+        <WorkPlanReviewPanels summary={workPlanReviewSummary} />
+      ) : null}
+
+      {workspaceJob.status === JobStatus.WORK_PLAN_REVIEW && canEditJobWorkPlanDuringReview(ctx.role) ? (
+        <WorkPlanReviewEditor
+          jobId={workspaceJob.id}
+          lines={workspaceJob.lines.map(
+            (line): WorkPlanReviewLineModel => ({
+              id: line.id,
+              title: line.title,
+              stages: line.stages.map((stage) => ({
+                id: stage.id,
+                title: stage.title,
+                internalNotes: stage.internalNotes,
+                sortOrder: stage.sortOrder,
+                tasks: stage.tasks.map((task) =>
+                  toJobTaskRowModel(task, ctx.role, evidenceView, evidenceCountByTask, acceptedEvidenceMaps),
+                ),
+              })),
+            }),
+          )}
+        />
+      ) : null}
+
             <WorkspacePanelFrame
               kicker="Execution"
               title="Progress & job controls"
@@ -455,7 +551,20 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
                     ))}
                   </ul>
                 </div>
-                {showLifecycle ? <JobLifecycleToolbar jobId={workspaceJob.id} status={workspaceJob.status} /> : null}
+                {showLifecycle ? (
+                  <JobLifecycleToolbar
+                    jobId={workspaceJob.id}
+                    status={workspaceJob.status}
+                    activateGuard={
+                      workspaceJob.status === JobStatus.WORK_PLAN_REVIEW && workPlanReviewSummary
+                        ? {
+                            disabled: workPlanReviewSummary.clientDisableActivate,
+                            reason: workPlanReviewSummary.clientDisableActivateReason,
+                          }
+                        : undefined
+                    }
+                  />
+                ) : null}
               </div>
             </WorkspacePanelFrame>
 
@@ -471,8 +580,12 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
 
             <WorkspacePanelFrame
               kicker="Plan"
-              title="Execution plan"
-              subtitle="Structure and titles were copied from the frozen sent snapshot at activation. Task status is operational only; the quote workspace remains the contract record."
+              title="Work plan"
+              subtitle={
+                workspaceJob.status === JobStatus.WORK_PLAN_REVIEW
+                  ? "Seeded from the accepted quote. Adjust names, requirements, and assignments above before activation; activation records a baseline of that version. The quote workspace remains the contract record."
+                  : "Seeded from the sent quote snapshot, then owned on this job. Task status is operational; the quote workspace remains the commercial record."
+              }
             >
               <div className="min-w-0 space-y-5 pt-1">
                 {workspaceJob.lines.map((line) => (

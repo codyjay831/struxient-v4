@@ -44,6 +44,11 @@ export function canActivateAcceptedQuoteAsJob(role: MembershipRole): boolean {
   return ACTIVATE_JOB_ROLES.has(role);
 }
 
+/** Same as job activation / create-job office roles — work plan edits during review only. */
+export function canEditJobWorkPlanDuringReview(role: MembershipRole): boolean {
+  return ACTIVATE_JOB_ROLES.has(role);
+}
+
 /** MEMBER denied by default. */
 export function canViewJobsWorkspace(role: MembershipRole): boolean {
   return VIEW_JOBS_ROLES.has(role);

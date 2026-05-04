@@ -29,7 +29,7 @@ import {
 import { jobMutationUpdateTaskStatus } from "@/server/phase4/job-mutations";
 import { listJobActivityForJob, listJobsForOrganization } from "@/server/phase4/job-queries";
 import {
-  quoteMutationActivateAcceptedQuoteAsJob,
+  quoteMutationInitializeJobFromAcceptedQuote,
   quoteMutationMarkAccepted,
 } from "@/server/phase4/quote-accept-activate";
 import { JobActivityEventType } from "@/server/phase5/job-activity-types";
@@ -237,11 +237,15 @@ describe("Phase 5 job execution + activity (integration)", () => {
     await quoteMutationMarkReadyToSend(salesCtxA, fd({ quoteId }));
     await quoteMutationMarkSent(salesCtxA, fd({ quoteId }));
     await quoteMutationMarkAccepted(salesCtxA, fd({ quoteId }));
-    const act = await quoteMutationActivateAcceptedQuoteAsJob(officeCtxA, fd({ quoteId }));
+    const act = await quoteMutationInitializeJobFromAcceptedQuote(officeCtxA, fd({ quoteId }));
     expect(act.ok).toBe(true);
     if (!act.ok) throw new Error("activate");
 
     const job = await prisma.job.findUniqueOrThrow({ where: { quoteId } });
+
+    // Manually activate for phase 5 tests
+    await prisma.job.update({ where: { id: job.id }, data: { status: JobStatus.ACTIVE, activatedAt: new Date() } });
+
     const tasks = await prisma.jobTask.findMany({ where: { jobId: job.id }, orderBy: { sortOrder: "asc" } });
     expect(tasks.length).toBe(2);
 
@@ -256,7 +260,7 @@ describe("Phase 5 job execution + activity (integration)", () => {
     expect(progress0.requiredComplete).toBe(0);
     expect(progress0.totalTasks).toBe(2);
 
-    expect(await prisma.jobActivityEvent.count({ where: { jobId, eventType: JobActivityEventType.JOB_CREATED } })).toBe(
+    expect(await prisma.jobActivityEvent.count({ where: { jobId, eventType: JobActivityEventType.JOB_WORK_PLAN_CREATED } })).toBe(
       1,
     );
 

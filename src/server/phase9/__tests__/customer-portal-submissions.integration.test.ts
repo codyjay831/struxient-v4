@@ -26,7 +26,11 @@ import {
   quoteMutationMarkReadyToSend,
   quoteMutationMarkSent,
 } from "@/server/phase2/quote-mutations";
-import { quoteMutationActivateAcceptedQuoteAsJob, quoteMutationMarkAccepted } from "@/server/phase4/quote-accept-activate";
+import {
+  quoteMutationInitializeJobFromAcceptedQuote,
+  quoteMutationMarkAccepted,
+} from "@/server/phase4/quote-accept-activate";
+import { jobMutationActivateExecution } from "@/server/phase4/job-activation";
 import { createPortalAccessTokenForQuote, revokeActivePortalTokenForQuote } from "@/server/phase8/portal-token-mutations";
 import { getPortalViewByRawToken } from "@/server/phase8/portal-projection";
 import { createPortalSubmissionFromToken } from "@/server/phase9/portal-submission-actions";
@@ -444,9 +448,13 @@ describe("Phase 9 customer portal submissions (integration)", () => {
   it("submission with job links jobId from quote; work station href prefers job", async () => {
     const { oppId, quoteId } = await seedSentQuote();
     await quoteMutationMarkAccepted(salesCtxA, fd({ quoteId }));
-    const act = await quoteMutationActivateAcceptedQuoteAsJob(officeCtxA, fd({ quoteId }));
-    expect(act.ok).toBe(true);
-    if (!act.ok) throw new Error("activate");
+    const initRes = await quoteMutationInitializeJobFromAcceptedQuote(officeCtxA, fd({ quoteId }));
+    expect(initRes.ok).toBe(true);
+    if (!initRes.ok || !initRes.jobId) throw new Error("initialize");
+
+    // Activate for execution
+    const activateRes = await jobMutationActivateExecution(officeCtxA, fd({ jobId: initRes.jobId }));
+    expect(activateRes.ok).toBe(true);
 
     const job = await prisma.job.findFirstOrThrow({ where: { quoteId } });
 

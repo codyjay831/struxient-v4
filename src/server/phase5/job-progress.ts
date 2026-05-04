@@ -52,7 +52,7 @@ export function reduceTasksToProgress(tasks: TaskProgressRow[]): JobProgressSnap
 
 export async function getJobProgressForJob(organizationId: string, jobId: string): Promise<JobProgressSnapshot> {
   const tasks = await prisma.jobTask.findMany({
-    where: { organizationId, jobId },
+    where: { organizationId, jobId, archivedAt: null },
     select: { status: true, isRequired: true },
   });
   return reduceTasksToProgress(tasks);
@@ -71,7 +71,7 @@ export async function getJobProgressMapForJobs(
   }
 
   const rows = await prisma.jobTask.findMany({
-    where: { organizationId, jobId: { in: jobIds } },
+    where: { organizationId, jobId: { in: jobIds }, archivedAt: null },
     select: { jobId: true, status: true, isRequired: true },
   });
 

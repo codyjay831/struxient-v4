@@ -28,7 +28,7 @@ export function canUpdateJobTasksForCurrentJobState(role: MembershipRole, jobSta
   if (!canUpdateJobTaskStatus(role)) {
     return false;
   }
-  if (jobStatus === JobStatus.COMPLETED || jobStatus === JobStatus.CANCELED) {
+  if (jobStatus === JobStatus.COMPLETED || jobStatus === JobStatus.CANCELED || jobStatus === JobStatus.WORK_PLAN_REVIEW) {
     return false;
   }
   if (jobStatus === JobStatus.PAUSED) {

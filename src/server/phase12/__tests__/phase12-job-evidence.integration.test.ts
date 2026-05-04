@@ -32,7 +32,8 @@ import {
   quoteMutationMarkReadyToSend,
   quoteMutationMarkSent,
 } from "@/server/phase2/quote-mutations";
-import { quoteMutationMarkAccepted, quoteMutationActivateAcceptedQuoteAsJob } from "@/server/phase4/quote-accept-activate";
+import { quoteMutationMarkAccepted, quoteMutationInitializeJobFromAcceptedQuote } from "@/server/phase4/quote-accept-activate";
+import { jobMutationActivateExecution } from "@/server/phase4/job-activation";
 import { getPortalViewByRawToken } from "@/server/phase8/portal-projection";
 import { createPortalAccessTokenForQuote } from "@/server/phase8/portal-token-mutations";
 import { getWorkStationFeed, parseWorkStationFeedFilters } from "@/server/phase6/work-station-feed";
@@ -266,10 +267,16 @@ describe("Phase 12 job evidence (integration)", () => {
 
     const acc = await quoteMutationMarkAccepted(salesCtxA, fd({ quoteId }));
     expect(acc.ok).toBe(true);
-    const act = await quoteMutationActivateAcceptedQuoteAsJob(officeCtxA, fd({ quoteId }));
-    expect(act.ok).toBe(true);
-    if (!act.ok) throw new Error("activate");
-    const jobId = act.jobId;
+    const initRes = await quoteMutationInitializeJobFromAcceptedQuote(officeCtxA, fd({ quoteId }));
+    expect(initRes.ok).toBe(true);
+    if (!initRes.ok || !initRes.jobId) throw new Error("initialize");
+
+    // Activate for execution
+    const activateRes = await jobMutationActivateExecution(officeCtxA, fd({ jobId: initRes.jobId }));
+    expect(activateRes.ok).toBe(true);
+    if (!activateRes.ok) throw new Error("activate");
+
+    const jobId = initRes.jobId;
 
     const created = await createPortalAccessTokenForQuote(officeCtxA, quoteId);
     expect(created.ok).toBe(true);

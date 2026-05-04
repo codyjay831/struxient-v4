@@ -1451,6 +1451,7 @@ export async function quoteMutationMarkSent(ctx: OrgSessionContext, formData: Fo
     asOfDate: sentAt,
   });
 
+  /** Proposed work-plan seed at send; job refines after acceptance; activation records baseline. */
   const internalExecutionPlan = buildInternalExecutionPlanFromLineItems(full.lineItems);
 
   const snapshot = {

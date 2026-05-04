@@ -29,9 +29,10 @@ import {
   quoteMutationMarkSent,
 } from "@/server/phase2/quote-mutations";
 import {
-  quoteMutationActivateAcceptedQuoteAsJob,
+  quoteMutationInitializeJobFromAcceptedQuote,
   quoteMutationMarkAccepted,
 } from "@/server/phase4/quote-accept-activate";
+import { jobMutationActivateExecution } from "@/server/phase4/job-activation";
 import { JobActivityEventType } from "@/server/phase5/job-activity-types";
 import { jobMutationComplete, jobMutationPause } from "@/server/phase5/job-status-mutations";
 import { jobMutationUpdateTaskStatus } from "@/server/phase4/job-mutations";
@@ -273,9 +274,14 @@ describe("Phase 7 scheduled work (integration)", () => {
     await quoteMutationMarkReadyToSend(salesCtxA, fd({ quoteId }));
     await quoteMutationMarkSent(salesCtxA, fd({ quoteId }));
     await quoteMutationMarkAccepted(salesCtxA, fd({ quoteId }));
-    const act = await quoteMutationActivateAcceptedQuoteAsJob(officeCtxA, fd({ quoteId }));
-    expect(act.ok).toBe(true);
-    if (!act.ok) throw new Error("activate");
+    const initRes = await quoteMutationInitializeJobFromAcceptedQuote(officeCtxA, fd({ quoteId }));
+    expect(initRes.ok).toBe(true);
+    if (!initRes.ok || !initRes.jobId) throw new Error("initialize");
+
+    // Activate for execution
+    const activateRes = await jobMutationActivateExecution(officeCtxA, fd({ jobId: initRes.jobId }));
+    expect(activateRes.ok).toBe(true);
+    if (!activateRes.ok) throw new Error("activate");
 
     const job = await prisma.job.findUniqueOrThrow({ where: { quoteId } });
     const tasks = await prisma.jobTask.findMany({ where: { jobId: job.id }, orderBy: { sortOrder: "asc" } });

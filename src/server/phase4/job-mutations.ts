@@ -132,6 +132,12 @@ export async function jobMutationUpdateTaskStatus(
 
   }
 
+  if (jobStatus === JobStatus.WORK_PLAN_REVIEW) {
+
+    return { ok: false, error: "Task status cannot be changed during work plan review." };
+
+  }
+
   if (jobStatus === JobStatus.PAUSED && !canUpdateJobTaskWhenJobPaused(ctx.role)) {
 
     return {

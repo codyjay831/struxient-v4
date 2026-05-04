@@ -113,6 +113,7 @@ export async function quoteMutationSendQuoteToCustomerByEmail(
     assumptions: full.assumptions,
     asOfDate: sentAt,
   });
+  /** Proposed work-plan seed at send (same semantics as mark-sent snapshot). */
   const internalExecutionPlan = buildInternalExecutionPlanFromLineItems(full.lineItems);
   const snapshot = {
     version: 2 as const,

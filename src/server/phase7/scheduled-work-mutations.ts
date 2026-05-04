@@ -56,6 +56,9 @@ export async function jobMutationScheduleJobTask(
       if (!job) {
         throw new Error("JOB_NOT_FOUND");
       }
+      if (job.status === JobStatus.WORK_PLAN_REVIEW) {
+        throw new Error("JOB_IN_REVIEW");
+      }
       if (!canAttachNewScheduleToJob(job.status)) {
         throw new Error("JOB_CLOSED");
       }
@@ -124,6 +127,9 @@ export async function jobMutationScheduleJobTask(
     if (e instanceof Error) {
       if (e.message === "JOB_NOT_FOUND" || e.message === "TASK_NOT_FOUND") {
         return { ok: false, error: "Job or task was not found." };
+      }
+      if (e.message === "JOB_IN_REVIEW") {
+        return { ok: false, error: "Scheduling is not allowed during work plan review." };
       }
       if (e.message === "JOB_CLOSED") {
         return { ok: false, error: "This job is closed; new schedule entries are not allowed." };

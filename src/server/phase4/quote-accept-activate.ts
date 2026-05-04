@@ -1,5 +1,5 @@
 /**
- * Phase 4: quote acceptance and orchestration of job activation from frozen SENT snapshot v2.
+ * Phase 4: quote acceptance and orchestration of job creation from sent snapshot v2 (commercial preview frozen; proposed work-plan seed for job rows).
  */
 import { QuoteStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -11,7 +11,7 @@ import type { QuoteActionResult } from "@/server/phase2/quote-mutations";
 import { zodActionFailure } from "@/server/phase2/quote-mutations";
 import type { OrgSessionContext } from "@/server/phase1/org-session";
 import { recordQuoteActivity } from "@/server/phase2/record-quote-activity";
-import { activateAcceptedQuoteAsJobInTransaction } from "@/server/phase4/job-activation";
+import { initializeJobFromAcceptedQuoteInTransaction } from "@/server/phase4/job-activation";
 
 function acceptanceBlockedReason(status: QuoteStatus): string | null {
   if (status === QuoteStatus.SENT) return null;
@@ -84,7 +84,7 @@ export async function quoteMutationMarkAccepted(ctx: OrgSessionContext, formData
   return { ok: true, quoteId: quote.id };
 }
 
-export async function quoteMutationActivateAcceptedQuoteAsJob(
+export async function quoteMutationInitializeJobFromAcceptedQuote(
   ctx: OrgSessionContext,
   formData: FormData,
 ): Promise<QuoteActionResult> {
@@ -111,7 +111,7 @@ export async function quoteMutationActivateAcceptedQuoteAsJob(
     return { ok: false, error: "Create a job only from an accepted quote." };
   }
 
-  const r = await activateAcceptedQuoteAsJobInTransaction(ctx, quote);
+  const r = await initializeJobFromAcceptedQuoteInTransaction(ctx, quote);
   if (!r.ok) {
     return { ok: false, error: r.error };
   }

@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 const FILTER_TABS: { label: string; value: JobListStatusFilter; param: string | null }[] = [
   { label: "All", value: "ALL", param: null },
+  { label: "Review", value: JobStatus.WORK_PLAN_REVIEW, param: "review" },
   { label: "Active", value: JobStatus.ACTIVE, param: "active" },
   { label: "Paused", value: JobStatus.PAUSED, param: "paused" },
   { label: "Completed", value: JobStatus.COMPLETED, param: "completed" },

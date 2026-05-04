@@ -24,7 +24,11 @@ import {
   quoteMutationMarkReadyToSend,
   quoteMutationMarkSent,
 } from "@/server/phase2/quote-mutations";
-import { quoteMutationActivateAcceptedQuoteAsJob, quoteMutationMarkAccepted } from "@/server/phase4/quote-accept-activate";
+import {
+  quoteMutationInitializeJobFromAcceptedQuote,
+  quoteMutationMarkAccepted,
+} from "@/server/phase4/quote-accept-activate";
+import { jobMutationActivateExecution } from "@/server/phase4/job-activation";
 import { getPortalViewByRawToken } from "@/server/phase8/portal-projection";
 import { hashPortalToken } from "@/server/phase8/portal-token-crypto";
 import {
@@ -372,11 +376,16 @@ describe("Phase 8 customer portal (integration)", () => {
   it("schedule projection only includes customer-visible tasks", async () => {
     const { oppId, quoteId } = await seedSentQuote();
     await quoteMutationMarkAccepted(salesCtxA, fd({ quoteId }));
-    const act = await quoteMutationActivateAcceptedQuoteAsJob(officeCtxA, fd({ quoteId }));
-    expect(act.ok).toBe(true);
-    if (!act.ok) return;
-    const jobId = act.jobId;
-    if (!jobId) return;
+    const initRes = await quoteMutationInitializeJobFromAcceptedQuote(officeCtxA, fd({ quoteId }));
+    expect(initRes.ok).toBe(true);
+    if (!initRes.ok || !initRes.jobId) return;
+
+    // Activate for execution
+    const activateRes = await jobMutationActivateExecution(officeCtxA, fd({ jobId: initRes.jobId }));
+    expect(activateRes.ok).toBe(true);
+    if (!activateRes.ok) return;
+
+    const jobId = initRes.jobId;
 
     const tasks = await prisma.jobTask.findMany({ where: { jobId }, orderBy: { sortOrder: "asc" } });
     expect(tasks.length).toBeGreaterThanOrEqual(1);

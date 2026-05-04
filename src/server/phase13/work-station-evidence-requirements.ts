@@ -30,6 +30,7 @@ export async function listJobTasksNeedingAcceptedEvidenceForWorkStation(
   const candidates = await prisma.jobTask.findMany({
     where: {
       organizationId: ctx.organizationId,
+      archivedAt: null,
       status: { in: [JobTaskStatus.READY, JobTaskStatus.IN_PROGRESS] },
       completionRequirementsJson: { not: Prisma.DbNull },
       job: { status: { in: [JobStatus.ACTIVE, JobStatus.PAUSED] } },

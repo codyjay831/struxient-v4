@@ -5,7 +5,7 @@ import {
   mapJobStatusForCustomer,
   mapJobTaskStatusForCustomer,
   mapScheduledWorkStatusForCustomer,
-} from "../portal-projection";
+} from "../portal-customer-copy";
 import { portalViewDTOSchema } from "../portal-dtos";
 
 describe("portal DTOs and customer-facing labels", () => {

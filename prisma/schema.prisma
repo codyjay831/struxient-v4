@@ -62,6 +62,7 @@ enum QuoteStatus {
 }
 
 enum JobStatus {
+  WORK_PLAN_REVIEW
   ACTIVE
   COMPLETED
   PAUSED
@@ -451,9 +452,10 @@ model Job {
   opportunityId      String?
   displayNumber      Int
   title              String
-  status             JobStatus @default(ACTIVE)
+  status             JobStatus @default(WORK_PLAN_REVIEW)
   sourceSnapshotJson Json
-  activatedAt        DateTime
+  activationBaselineJson Json?
+  activatedAt        DateTime?
   activatedByUserId  String?
   /// Pause/cancel context; cleared on resume (when it held pause note) and on complete.
   statusReason       String?   @db.Text
@@ -570,6 +572,8 @@ model JobTask {
   completedAt                DateTime?
   completedByUserId          String?
   completionRequirementsJson Json?
+  /// Soft-archive during work plan review; excluded from execution feeds and activation baseline.
+  archivedAt                 DateTime?
   createdAt                  DateTime      @default(now())
   updatedAt                  DateTime      @updatedAt
 

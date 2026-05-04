@@ -215,7 +215,8 @@ export async function getWorkStationFeed(
   }
 
   if (includeJobCards(ctx.role)) {
-    built.push(...(await buildJobCards(ctx)));
+    const jobCards = await buildJobCards(ctx);
+    built.push(...jobCards);
   }
 
   if (canSeeJobEvidenceWorkStationCards(ctx.role)) {
@@ -469,10 +470,14 @@ async function buildQuoteCards(ctx: OrgSessionContext): Promise<WorkStationCard[
     },
     orderBy: { updatedAt: "desc" },
     take: WORK_STATION_QUERY_CAP,
-    include: { customer: { select: { displayName: true } } },
+    include: {
+      customer: { select: { displayName: true } },
+      job: { select: { id: true } },
+    },
   });
 
   for (const q of quotes) {
+    if (q.job) continue; // Only show quote cards if no job has been created yet
     const primaryHref = `/app/sales/quotes/${q.id}`;
     const customerName = q.customer.displayName;
     const updatedAt = iso(q.updatedAt);
@@ -626,6 +631,10 @@ async function buildQuoteCards(ctx: OrgSessionContext): Promise<WorkStationCard[
 
 async function buildJobCards(ctx: OrgSessionContext): Promise<WorkStationCard[]> {
   const cards: WorkStationCard[] = [];
+
+  const planningCards = await buildPlanningCards(ctx);
+  cards.push(...planningCards);
+
   const jobs = await prisma.job.findMany({
     where: {
       organizationId: ctx.organizationId,
@@ -640,12 +649,12 @@ async function buildJobCards(ctx: OrgSessionContext): Promise<WorkStationCard[]>
   });
 
   if (jobs.length === 0) {
-    return cards;
+    return dedupeJobCards(cards);
   }
 
   const jobIds = jobs.map((j) => j.id);
   const tasks = await prisma.jobTask.findMany({
-    where: { organizationId: ctx.organizationId, jobId: { in: jobIds } },
+    where: { organizationId: ctx.organizationId, jobId: { in: jobIds }, archivedAt: null },
     select: {
       id: true,
       jobId: true,
@@ -808,6 +817,67 @@ async function buildJobCards(ctx: OrgSessionContext): Promise<WorkStationCard[]>
   }
 
   return dedupeJobCards(cards);
+}
+
+export async function buildPlanningCards(ctx: OrgSessionContext): Promise<WorkStationCard[]> {
+  const canPlan =
+    ctx.role === MembershipRole.OWNER ||
+    ctx.role === MembershipRole.ADMIN ||
+    ctx.role === MembershipRole.MANAGER ||
+    ctx.role === MembershipRole.OFFICE;
+
+  if (!canPlan) return [];
+
+  const jobs = await prisma.job.findMany({
+    where: {
+      organizationId: ctx.organizationId,
+      status: JobStatus.WORK_PLAN_REVIEW,
+    },
+    orderBy: { updatedAt: "desc" },
+    take: WORK_STATION_QUERY_CAP,
+    include: {
+      customer: { select: { displayName: true } },
+      quote: { select: { displayNumber: true } },
+    },
+  });
+
+  const jobIds = jobs.map((j) => j.id);
+  const taskCounts =
+    jobIds.length === 0
+      ? new Map<string, number>()
+      : new Map(
+          (
+            await prisma.jobTask.groupBy({
+              by: ["jobId"],
+              where: {
+                organizationId: ctx.organizationId,
+                jobId: { in: jobIds },
+                archivedAt: null,
+              },
+              _count: { _all: true },
+            })
+          ).map((r) => [r.jobId, r._count._all]),
+        );
+
+  return jobs.map((j) => {
+    const n = taskCounts.get(j.id) ?? 0;
+    return {
+    id: `JOB:${j.id}:planning`,
+    category: "NOW",
+    priority: "HIGH",
+    sourceType: "JOB",
+    sourceId: j.id,
+    title: "Job needs work plan review",
+    reason: `Accepted quote is ready for pre-execution setup. This job has ${n} active task${n === 1 ? "" : "s"} in the work plan — review details and assignments before releasing work.`,
+    primaryActionLabel: "Open work plan",
+    primaryHref: `/app/jobs/${j.id}`,
+    customerName: j.customer.displayName,
+    jobDisplayNumber: j.displayNumber,
+    quoteDisplayNumber: j.quote.displayNumber,
+    statusLabel: "Work plan review",
+    updatedAt: iso(j.updatedAt),
+  };
+  });
 }
 
 /**

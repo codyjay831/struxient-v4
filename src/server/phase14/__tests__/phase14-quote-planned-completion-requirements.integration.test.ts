@@ -29,9 +29,10 @@ import {
 } from "@/server/phase2/quote-mutations";
 import { jobMutationUpdateTaskStatus } from "@/server/phase4/job-mutations";
 import {
-  quoteMutationActivateAcceptedQuoteAsJob,
+  quoteMutationInitializeJobFromAcceptedQuote,
   quoteMutationMarkAccepted,
 } from "@/server/phase4/quote-accept-activate";
+import { jobMutationActivateExecution } from "@/server/phase4/job-activation";
 import {
   parseSentSnapshotPreviewDto,
   parseValidatedSentQuoteSnapshot,
@@ -416,10 +417,15 @@ describe("Phase 14 quote planned completion requirements (integration)", () => {
     });
 
     await quoteMutationMarkAccepted(salesCtxA, fd({ quoteId }));
-    const act = await quoteMutationActivateAcceptedQuoteAsJob(officeCtxA, fd({ quoteId }));
-    expect(act.ok).toBe(true);
-    if (!act.ok) return;
-    const jt = await prisma.jobTask.findFirstOrThrow({ where: { jobId: act.jobId } });
+    const initRes = await quoteMutationInitializeJobFromAcceptedQuote(officeCtxA, fd({ quoteId }));
+    expect(initRes.ok).toBe(true);
+    if (!initRes.ok || !initRes.jobId) return;
+
+    // Activate for execution
+    const activateRes = await jobMutationActivateExecution(officeCtxA, fd({ jobId: initRes.jobId }));
+    expect(activateRes.ok).toBe(true);
+
+    const jt = await prisma.jobTask.findFirstOrThrow({ where: { jobId: initRes.jobId } });
     expect(jt.completionRequirementsJson).toEqual({
       version: 1,
       evidence: { required: true, minAcceptedCount: 1, allowJobLevelEvidence: false },
@@ -434,6 +440,9 @@ describe("Phase 14 quote planned completion requirements (integration)", () => {
     await quoteMutationMarkReadyToSend(salesCtxA, fd({ quoteId }));
     await quoteMutationMarkSent(salesCtxA, fd({ quoteId }));
     await quoteMutationMarkAccepted(salesCtxA, fd({ quoteId }));
+    const initRes = await quoteMutationInitializeJobFromAcceptedQuote(officeCtxA, fd({ quoteId }));
+    expect(initRes.ok).toBe(true);
+    if (!initRes.ok) return;
 
     const row = await prisma.quote.findUniqueOrThrow({ where: { id: quoteId } });
     const snap = sentQuoteSnapshotV2Schema.parse(row.sentSnapshotJson);
@@ -456,10 +465,10 @@ describe("Phase 14 quote planned completion requirements (integration)", () => {
       where: { id: quoteId },
       data: { sentSnapshotJson: tampered as object },
     });
-    const act = await quoteMutationActivateAcceptedQuoteAsJob(officeCtxA, fd({ quoteId }));
-    expect(act.ok).toBe(false);
-    if (!act.ok) {
-      expect(act.error.toLowerCase()).toMatch(/valid sent snapshot|activation blocked|invalid/);
+    const actRes = await jobMutationActivateExecution(officeCtxA, fd({ jobId: initRes.jobId }));
+    expect(actRes.ok).toBe(false);
+    if (!actRes.ok) {
+      expect(actRes.error.toLowerCase()).toMatch(/valid sent snapshot|activation blocked|invalid/);
     }
 
     await deleteQuoteCascade(quoteId);
@@ -480,16 +489,22 @@ describe("Phase 14 quote planned completion requirements (integration)", () => {
     await quoteMutationMarkReadyToSend(salesCtxA, fd({ quoteId }));
     await quoteMutationMarkSent(salesCtxA, fd({ quoteId }));
     await quoteMutationMarkAccepted(salesCtxA, fd({ quoteId }));
-    const act = await quoteMutationActivateAcceptedQuoteAsJob(officeCtxA, fd({ quoteId }));
-    expect(act.ok).toBe(true);
-    if (!act.ok) return;
-    const jt = await prisma.jobTask.findFirstOrThrow({ where: { jobId: act.jobId } });
+    const initRes = await quoteMutationInitializeJobFromAcceptedQuote(officeCtxA, fd({ quoteId }));
+    expect(initRes.ok).toBe(true);
+    if (!initRes.ok || !initRes.jobId) return;
+
+    // Activate for execution
+    const activateRes = await jobMutationActivateExecution(officeCtxA, fd({ jobId: initRes.jobId }));
+    expect(activateRes.ok).toBe(true);
+    if (!activateRes.ok) return;
+
+    const jt = await prisma.jobTask.findFirstOrThrow({ where: { jobId: initRes.jobId } });
     expect(jt.completionRequirementsJson).toBeTruthy();
 
-    await jobMutationUpdateTaskStatus(officeCtxA, fd({ jobId: act.jobId, taskId: jt.id, status: JobTaskStatus.IN_PROGRESS }));
+    await jobMutationUpdateTaskStatus(officeCtxA, fd({ jobId: initRes.jobId, taskId: jt.id, status: JobTaskStatus.IN_PROGRESS }));
     const block = await jobMutationUpdateTaskStatus(
       officeCtxA,
-      fd({ jobId: act.jobId, taskId: jt.id, status: JobTaskStatus.COMPLETE }),
+      fd({ jobId: initRes.jobId, taskId: jt.id, status: JobTaskStatus.COMPLETE }),
     );
     expect(block.ok).toBe(false);
     if (!block.ok) expect(block.error).toMatch(/accepted evidence/i);

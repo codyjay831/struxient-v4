@@ -17,6 +17,8 @@ export default defineConfig({
       "src/server/phase9/__tests__/*.integration.test.ts",
       "src/server/phase11/__tests__/*.test.ts",
       "src/server/phase3/__tests__/template-payloads.test.ts",
+      "src/server/phase4/__tests__/work-plan-review-summary.test.ts",
+      "src/components/work-plan/**/*.test.ts",
     ],
   },
   resolve: {

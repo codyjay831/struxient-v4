@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { JobStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { canManageJobTaskCompletionRequirements } from "@/lib/phase13-permissions";
 import type { OrgSessionContext } from "@/server/phase1/org-session";
@@ -45,16 +45,22 @@ export async function jobMutationUpdateJobTaskCompletionRequirements(
       id: parsed.data.jobTaskId,
       jobId: parsed.data.jobId,
       organizationId: ctx.organizationId,
+      archivedAt: null,
     },
     select: {
       id: true,
       title: true,
       completionRequirementsJson: true,
+      job: { select: { status: true } },
     },
   });
 
   if (!task) {
     return { ok: false, error: "Task not found." };
+  }
+
+  if (task.job.status === JobStatus.COMPLETED || task.job.status === JobStatus.CANCELED) {
+    return { ok: false, error: "This job is closed. Completion requirements cannot be edited." };
   }
 
   let nextJson: Prisma.InputJsonValue | null;
