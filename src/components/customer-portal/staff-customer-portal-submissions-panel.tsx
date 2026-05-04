@@ -16,6 +16,7 @@ import type { StaffSubmissionMutationResult } from "@/server/phase9/customer-por
 import { PORTAL_FILE_UPLOAD_DEFAULT_MESSAGE_TEXT } from "@/server/phase11/portal-file-upload-messages";
 import { Button } from "@/components/ui/button";
 import { PromoteToEvidenceDialog } from "@/components/job-evidence/promote-to-evidence-dialog";
+import { cn } from "@/lib/utils";
 
 export type StaffPortalSubmissionAttachmentListItem = {
   id: string;
@@ -76,10 +77,12 @@ function statusLabel(s: CustomerPortalSubmissionStatus): string {
   return s.replace(/_/g, " ");
 }
 
+const badgeBase = "rounded-[4px] border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
+
 function ActionErr({ s }: { s: StaffSubmissionMutationResult | undefined }) {
   if (!s || s.ok) return null;
   return (
-    <p className="text-xs text-destructive" role="alert">
+    <p className="text-xs font-medium text-destructive dark:text-red-400" role="alert">
       {s.error}
     </p>
   );
@@ -111,41 +114,51 @@ function SubmissionRow({
     row.message.trim() !== PORTAL_FILE_UPLOAD_DEFAULT_MESSAGE_TEXT.trim();
 
   return (
-    <li className="border-b border-border px-4 py-4 last:border-0">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="space-y-1">
+    <li className="min-w-0 border-b border-border px-3.5 py-3.5 last:border-0 dark:border-zinc-800/60 sm:px-4 sm:py-4">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap gap-2">
-            <span className="rounded-sm border border-border bg-muted/30 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <span
+              className={cn(
+                badgeBase,
+                "border-border bg-muted/30 text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-500",
+              )}
+            >
               {typeLabel(row.type)}
             </span>
-            <span className="rounded-sm border border-border px-2 py-0.5 text-[11px] font-medium text-foreground">
+            <span
+              className={cn(
+                badgeBase,
+                "border-border font-medium normal-case tracking-normal text-foreground dark:border-zinc-800 dark:text-zinc-200",
+              )}
+            >
               {statusLabel(row.status)}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground dark:text-zinc-500">
             {row.customerDisplayName}
             {row.quoteDisplayNumber != null ? ` · Quote #${row.quoteDisplayNumber}` : ""}
             {row.jobDisplayNumber != null ? ` · Job #${row.jobDisplayNumber}` : ""}
           </p>
-          <time className="text-xs tabular-nums text-muted-foreground">
+          <time className="text-xs tabular-nums text-muted-foreground dark:text-zinc-500">
             {new Date(row.createdAt).toLocaleString()}
           </time>
         </div>
       </div>
       {row.type === CustomerPortalSubmissionType.APPOINTMENT_CONFIRMATION ? (
-        <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
-          {row.visitLabel ? <p className="font-medium text-foreground">{row.visitLabel}</p> : null}
+        <div className="mt-2 space-y-0.5 text-xs text-muted-foreground dark:text-zinc-500">
+          {row.visitLabel ? <p className="font-medium text-foreground dark:text-zinc-200">{row.visitLabel}</p> : null}
           {row.scheduleWindowDisplay ? <p className="tabular-nums">{row.scheduleWindowDisplay}</p> : null}
         </div>
       ) : null}
-      {row.subject ? <p className="mt-2 text-sm font-medium text-foreground">{row.subject}</p> : null}
+      {row.subject ? <p className="mt-2 text-sm font-medium text-foreground dark:text-zinc-100">{row.subject}</p> : null}
       {showCustomerMessage ? (
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">{row.message}</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground dark:text-zinc-200">{row.message}</p>
       ) : null}
 
       {row.type === CustomerPortalSubmissionType.FILE_UPLOAD ? (
         <div className="mt-3 space-y-3">
-          <p className="text-xs leading-relaxed text-muted-foreground">
+          <p className="text-xs leading-relaxed text-muted-foreground dark:text-zinc-500">
             Customer upload (intake). Files are not approved job evidence until your team reviews them.
           </p>
           {row.attachments && row.attachments.length > 0 ? (
@@ -166,32 +179,32 @@ function SubmissionRow({
                 return (
                   <li
                     key={a.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-border/60 bg-background/40 px-3 py-2"
+                    className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-[6px] border border-border/80 bg-card/20 px-3 py-2 dark:border-zinc-800/60 dark:bg-zinc-950/25"
                   >
                     <div className="min-w-0 flex-1 space-y-1">
-                      <p className="truncate text-sm font-medium text-foreground">{a.originalFilename}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="truncate text-sm font-medium text-foreground dark:text-zinc-100">{a.originalFilename}</p>
+                      <p className="text-xs text-muted-foreground dark:text-zinc-500">
                         {(a.detectedContentType ?? a.contentType).replace(/_/g, " ")} · {formatBytes(a.sizeBytes)} ·{" "}
                         {new Date(a.createdAt).toLocaleString()}
                       </p>
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground dark:text-zinc-600">
                         {attachmentStatusLabel(a.status)}
                       </p>
                       {bucketsForAtt.length > 0 ? (
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="text-[11px] text-muted-foreground dark:text-zinc-500">
                           Promoted to evidence
                           {alreadyJobLevel ? " (job-level)" : ""}
                           {promotedTaskIds.length > 0 ? ` (${promotedTaskIds.length} task link(s))` : ""}
                           {" · "}
-                          <span className="text-foreground/80">Open the job to review or add another target.</span>
+                          <span className="text-foreground/85 dark:text-zinc-300">Open the job to review or add another target.</span>
                         </p>
                       ) : null}
                     </div>
-                    <div className="flex shrink-0 flex-col items-end gap-2">
+                    <div className="flex min-w-0 shrink-0 flex-col items-end gap-2">
                       {a.status === CustomerPortalSubmissionAttachmentStatus.STORED ? (
                         <a
                           href={`/app/customer-portal-submissions/attachments/${encodeURIComponent(a.id)}`}
-                          className="text-sm font-medium text-primary hover:underline"
+                          className="text-sm font-medium text-primary hover:underline dark:text-blue-400"
                         >
                           Download
                         </a>
@@ -216,10 +229,10 @@ function SubmissionRow({
               })}
             </ul>
           ) : (
-            <p className="text-xs text-muted-foreground">No attachment metadata on record.</p>
+            <p className="text-xs text-muted-foreground dark:text-zinc-500">No attachment metadata on record.</p>
           )}
           {!row.jobId ? (
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground dark:text-zinc-500">
               Evidence promotion is available after this upload is tied to a job (customer portal link scoped to an
               active job).
             </p>
@@ -228,28 +241,34 @@ function SubmissionRow({
       ) : null}
 
       {canManage ? (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 flex min-w-0 flex-wrap gap-2">
           <form action={revAction}>
             <input type="hidden" name="submissionId" value={row.id} />
-            <Button type="submit" size="sm" variant="outline" disabled={revPending}>
+            <Button type="submit" size="sm" variant="outline" className="rounded-[5px] font-semibold" disabled={revPending}>
               {revPending ? "…" : "Mark reviewed"}
             </Button>
           </form>
           <form action={actAction}>
             <input type="hidden" name="submissionId" value={row.id} />
-            <Button type="submit" size="sm" variant="secondary" disabled={actPending}>
+            <Button type="submit" size="sm" variant="secondary" className="rounded-[5px] font-semibold" disabled={actPending}>
               {actPending ? "…" : "Mark actioned"}
             </Button>
           </form>
           <form action={disAction}>
             <input type="hidden" name="submissionId" value={row.id} />
-            <Button type="submit" size="sm" variant="ghost" className="text-muted-foreground" disabled={disPending}>
+            <Button
+              type="submit"
+              size="sm"
+              variant="ghost"
+              className="rounded-[5px] text-muted-foreground dark:text-zinc-500"
+              disabled={disPending}
+            >
               {disPending ? "…" : "Dismiss"}
             </Button>
           </form>
         </div>
       ) : (
-        <p className="mt-3 text-xs text-muted-foreground">Status changes are limited to office and management roles.</p>
+        <p className="mt-3 text-xs text-muted-foreground dark:text-zinc-500">Status changes are limited to office and management roles.</p>
       )}
 
       <div className="mt-2 space-y-1">
@@ -279,19 +298,19 @@ export function StaffCustomerPortalSubmissionsPanel({
   evidencePromotion,
 }: StaffCustomerPortalSubmissionsPanelProps) {
   return (
-    <section className="space-y-4 rounded-sm border border-border bg-card/10 p-5">
+    <section className="min-w-0 space-y-4 rounded-[6px] border border-border/80 bg-card/25 p-4 dark:border-zinc-800/60 dark:bg-zinc-950/30 sm:p-5">
       <div>
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        <h2 className="text-sm font-semibold text-foreground dark:text-zinc-100">{title}</h2>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground dark:text-zinc-500">
           Notes and file uploads submitted from the customer portal link for this record. New items:{" "}
-          <span className="font-medium tabular-nums text-foreground">{newCount}</span>
+          <span className="font-medium tabular-nums text-foreground dark:text-zinc-200">{newCount}</span>
         </p>
       </div>
 
       {submissions.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No customer portal activity for this record yet.</p>
+        <p className="text-sm text-muted-foreground dark:text-zinc-500">No customer portal activity for this record yet.</p>
       ) : (
-        <ul className="divide-y divide-border rounded-sm border border-border bg-background/30">
+        <ul className="min-w-0 divide-y divide-border overflow-hidden rounded-[6px] border border-border bg-background/25 dark:divide-zinc-800/60 dark:border-zinc-800/60 dark:bg-zinc-950/20">
           {submissions.map((row) => (
             <SubmissionRow
               key={row.id}

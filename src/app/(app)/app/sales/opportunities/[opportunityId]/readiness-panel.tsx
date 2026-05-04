@@ -1,5 +1,6 @@
 import type { QuoteDraftReadinessItem } from "@/server/phase1/readiness";
 import { allQuoteDraftBlockersPass } from "@/server/phase1/readiness";
+import { cn } from "@/lib/utils";
 
 function statusStyle(s: QuoteDraftReadinessItem["status"]) {
   if (s === "PASS") return "text-emerald-700 dark:text-emerald-400";
@@ -15,11 +16,12 @@ export function ReadinessPanel(props: { items: QuoteDraftReadinessItem[] }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-foreground">Readiness for quote workspace</h2>
         <span
-          className={`rounded-sm border px-2 py-0.5 text-xs font-medium ${
+          className={cn(
+            "rounded-[4px] border px-2 py-0.5 text-xs font-medium",
             ready
               ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-400"
-              : "border-border text-muted-foreground"
-          }`}
+              : "border-border text-muted-foreground dark:border-zinc-800 dark:text-zinc-500",
+          )}
         >
           {ready ? "Checks satisfied" : "Action required"}
         </span>
@@ -28,7 +30,7 @@ export function ReadinessPanel(props: { items: QuoteDraftReadinessItem[] }) {
         Derived on the server from current facts. These checks must pass before a quote draft can be created from this
         opportunity.
       </p>
-      <ul className="divide-y divide-border rounded-sm border border-border bg-card/20">
+      <ul className="divide-y divide-border rounded-[6px] border border-border bg-card/20 dark:divide-zinc-800/60 dark:border-zinc-800/60 dark:bg-zinc-950/25">
         {props.items.map((item) => (
           <li key={item.key} className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -53,18 +55,18 @@ export function NextActionCallout(props: { items: QuoteDraftReadinessItem[]; isC
   const firstFail = props.items.find((i) => i.status === "FAIL");
   if (firstFail) {
     return (
-      <div className="rounded-sm border border-border bg-card/40 px-4 py-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recommended next step</p>
-        <p className="mt-1 text-sm text-foreground">
+      <div className="rounded-[6px] border border-border bg-card/40 px-4 py-3 dark:border-zinc-800/60 dark:bg-zinc-950/35">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground dark:text-zinc-600">Recommended next step</p>
+        <p className="mt-1 text-sm text-foreground dark:text-zinc-200">
           {firstFail.label}: {firstFail.explanation}
         </p>
       </div>
     );
   }
   return (
-    <div className="rounded-sm border border-border bg-card/40 px-4 py-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recommended next step</p>
-      <p className="mt-1 text-sm text-foreground">
+    <div className="rounded-[6px] border border-border bg-card/40 px-4 py-3 dark:border-zinc-800/60 dark:bg-zinc-950/35">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground dark:text-zinc-600">Recommended next step</p>
+      <p className="mt-1 text-sm text-foreground dark:text-zinc-200">
         Intake checks are satisfied. Create a quote draft when you are ready to price and plan execution in the quote
         workspace.
       </p>

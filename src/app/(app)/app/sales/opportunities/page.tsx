@@ -4,6 +4,9 @@ import { requireOrgSession } from "@/server/phase1/org-session";
 import { listOpportunitiesForOrg } from "@/server/phase1/queries";
 import { Button } from "@/components/ui/button";
 import { formatOpportunityPriority, formatOpportunityStatus } from "@/lib/format-enums";
+import { AppWorkspaceCanvas } from "@/components/workspace/app-workspace-canvas";
+import { WorkspaceCommandHeader } from "@/components/workspace/workspace-command-header";
+import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 
 const STATUS_OPTIONS: (OpportunityStatus | "ALL")[] = [
   "ALL",
@@ -37,92 +40,101 @@ export default async function OpportunitiesListPage({
   const base = "/app/sales/opportunities";
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-1">
-          <Link href="/app/customers" className="text-xs font-medium text-muted-foreground hover:text-foreground">
-            Customers
-          </Link>
-          <h1 className="text-lg font-semibold tracking-tight text-foreground">Opportunities</h1>
-          <p className="max-w-xl text-sm text-muted-foreground">
-            Lead intake and pre-quote work. Execution tasks and sold jobs stay out of this lane until later phases.
-          </p>
-        </div>
-        <Button asChild className="w-fit rounded-sm">
-          <Link href="/app/sales/opportunities/new">Create opportunity</Link>
-        </Button>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Status</span>
-        {STATUS_OPTIONS.map((s) => {
-          const href = s === "ALL" ? base : `${base}?status=${s}`;
-          const active = statusFilter === s;
-          return (
-            <Link
-              key={s}
-              href={href}
-              className={`rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors ${
-                active
-                  ? "border-primary bg-primary/15 text-foreground"
-                  : "border-border bg-card/30 text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground"
-              }`}
-            >
-              {s === "ALL" ? "All" : formatOpportunityStatus(s)}
+    <AppWorkspaceCanvas>
+      <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6">
+        <WorkspaceCommandHeader
+          eyebrow="Sales workspace"
+          title="Opportunities"
+          description="Lead intake and pre-quote work. Execution tasks and sold jobs stay out of this lane until later phases."
+          actions={
+            <Button asChild className="rounded-[5px] font-semibold">
+              <Link href="/app/sales/opportunities/new">Create opportunity</Link>
+            </Button>
+          }
+          meta={
+            <Link href="/app/customers" className="font-medium text-primary hover:underline dark:text-blue-400">
+              Customers
             </Link>
-          );
-        })}
-      </div>
+          }
+        />
 
-      {rows.length === 0 ? (
-        <div className="rounded-sm border border-dashed border-border bg-card/30 p-10 text-center">
-          <p className="text-sm font-medium text-foreground">No opportunities match this view</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Start from a customer record or create a new opportunity to capture service type, scope intent, and intake
-            tasks.
-          </p>
-          <Button asChild className="mt-6 rounded-sm">
-            <Link href="/app/sales/opportunities/new">Create opportunity</Link>
-          </Button>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:text-zinc-600">
+            Status
+          </span>
+          {STATUS_OPTIONS.map((s) => {
+            const href = s === "ALL" ? base : `${base}?status=${s}`;
+            const active = statusFilter === s;
+            return (
+              <Link
+                key={s}
+                href={href}
+                className={`rounded-[5px] border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  active
+                    ? "border-primary/40 bg-primary/10 text-primary dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-200"
+                    : "border-border bg-card/40 text-muted-foreground hover:border-border hover:text-foreground dark:border-zinc-800/80 dark:bg-zinc-950 dark:text-zinc-500 dark:hover:text-zinc-300"
+                }`}
+              >
+                {s === "ALL" ? "All" : formatOpportunityStatus(s)}
+              </Link>
+            );
+          })}
         </div>
-      ) : (
-        <div className="overflow-hidden rounded-sm border border-border">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-border bg-muted/40">
-              <tr>
-                <th className="px-4 py-3 font-medium text-muted-foreground">Title</th>
-                <th className="px-4 py-3 font-medium text-muted-foreground">Customer</th>
-                <th className="px-4 py-3 font-medium text-muted-foreground">Status</th>
-                <th className="hidden px-4 py-3 font-medium text-muted-foreground md:table-cell">Service</th>
-                <th className="hidden px-4 py-3 font-medium text-muted-foreground lg:table-cell">Priority</th>
-                <th className="hidden px-4 py-3 font-medium text-muted-foreground lg:table-cell">Updated</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border bg-card/20">
-              {rows.map((o) => (
-                <tr key={o.id} className="transition-colors hover:bg-muted/30">
-                  <td className="px-4 py-3">
-                    <Link href={`/app/sales/opportunities/${o.id}`} className="font-medium text-primary hover:underline">
+
+        {rows.length === 0 ? (
+          <WorkspaceEmptyState
+            title="No opportunities match this view"
+            description="Start from a customer record or create a new opportunity to capture service type, scope intent, and intake tasks."
+          >
+            <Button asChild className="rounded-[5px] font-semibold">
+              <Link href="/app/sales/opportunities/new">Create opportunity</Link>
+            </Button>
+          </WorkspaceEmptyState>
+        ) : (
+          <ul className="min-w-0 divide-y divide-border rounded-[6px] border border-border dark:divide-zinc-800/60 dark:border-zinc-800/60">
+            {rows.map((o) => (
+              <li key={o.id} className="min-w-0 p-3.5 transition-colors hover:bg-muted/30 dark:hover:bg-zinc-900/40 sm:p-4">
+                <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <Link
+                      href={`/app/sales/opportunities/${o.id}`}
+                      className="block truncate text-sm font-semibold text-primary hover:underline dark:text-blue-400"
+                    >
                       {o.title}
                     </Link>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    <Link href={`/app/customers/${o.customer.id}`} className="hover:text-foreground hover:underline">
-                      {o.customer.displayName}
+                    <p className="text-[11px] text-muted-foreground dark:text-zinc-500">
+                      <Link href={`/app/customers/${o.customer.id}`} className="font-medium text-foreground/90 hover:underline dark:text-zinc-300">
+                        {o.customer.displayName}
+                      </Link>
+                      <span className="mx-1.5 text-border dark:text-zinc-700" aria-hidden>
+                        ·
+                      </span>
+                      <span>{o.serviceType}</span>
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground dark:text-zinc-600">
+                      <span className="rounded-[4px] border border-border bg-muted/40 px-1.5 py-0.5 dark:border-zinc-800 dark:bg-zinc-950">
+                        {formatOpportunityStatus(o.status)}
+                      </span>
+                      <span className="rounded-[4px] border border-border px-1.5 py-0.5 dark:border-zinc-800">
+                        {formatOpportunityPriority(o.priority)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col gap-1 text-left text-[11px] tabular-nums text-muted-foreground lg:text-right dark:text-zinc-500">
+                    <span>Updated {o.updatedAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</span>
+                    <Link
+                      href={`/app/sales/opportunities/${o.id}`}
+                      className="font-semibold text-primary hover:underline dark:text-blue-400 lg:ml-auto"
+                    >
+                      Open workspace →
                     </Link>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatOpportunityStatus(o.status)}</td>
-                  <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{o.serviceType}</td>
-                  <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
-                    {formatOpportunityPriority(o.priority)}
-                  </td>
-                  <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">{o.updatedAt.toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </AppWorkspaceCanvas>
   );
 }

@@ -30,6 +30,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { AppWorkspaceCanvas } from "@/components/workspace/app-workspace-canvas";
+import { WorkspaceCommandHeader } from "@/components/workspace/workspace-command-header";
+import {
+  workspaceDialogContentClass,
+  workspaceInputClass,
+  workspaceTextareaClass,
+} from "@/components/workspace/workspace-form-controls";
 import { cn } from "@/lib/utils";
 
 export type TemplatesLibrarySerializedProps = {
@@ -97,7 +104,7 @@ function buildLibraryHref(p: {
 function ActionError({ state }: { state: QuoteActionResult | undefined }) {
   if (!state || state.ok) return null;
   return (
-    <p className="text-sm text-destructive" role="alert">
+    <p className="text-sm font-medium text-destructive dark:text-red-400" role="alert">
       {state.error}
     </p>
   );
@@ -123,7 +130,7 @@ function isTaskOnlyPreview(
 
 function InternalBlock({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-sm border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-900/90 dark:text-amber-100/90">
+    <div className="rounded-[6px] border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-900/90 dark:text-amber-100/90">
       <p className="font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200/90">{label}</p>
       <div className="mt-1 text-muted-foreground">{children}</div>
     </div>
@@ -135,7 +142,7 @@ function PreviewBody({ preview }: { preview: WorkTemplateLibraryPreview }) {
     const { line, stages } = preview.payload;
       return (
         <div className="space-y-4 text-sm">
-          <div className="rounded-sm border border-border bg-muted/40 p-3">
+          <div className="rounded-[6px] border border-border bg-muted/40 p-3 dark:border-zinc-800/60 dark:bg-zinc-950/25">
             <p className="text-[11px] font-semibold uppercase text-muted-foreground">Line defaults</p>
             <p className="mt-1 font-medium text-foreground">{line.title}</p>
             <p className="mt-1 text-muted-foreground">{line.customerDescription}</p>
@@ -152,7 +159,7 @@ function PreviewBody({ preview }: { preview: WorkTemplateLibraryPreview }) {
             <p className="text-[11px] font-semibold uppercase text-muted-foreground">Stages & tasks</p>
             <ul className="mt-2 space-y-3">
               {stages.map((st, i) => (
-                <li key={i} className="rounded-sm border border-border/80 bg-background/40 p-3">
+                <li key={i} className="rounded-[6px] border border-border/80 bg-background/40 p-3 dark:border-zinc-800/60">
                   <p className="font-medium text-foreground">{st.title}</p>
                   {st.internalNotes ? (
                     <div className="mt-2">
@@ -180,7 +187,7 @@ function PreviewBody({ preview }: { preview: WorkTemplateLibraryPreview }) {
     const { stage, tasks } = preview.payload;
       return (
         <div className="space-y-3 text-sm">
-          <div className="rounded-sm border border-border bg-muted/40 p-3">
+          <div className="rounded-[6px] border border-border bg-muted/40 p-3 dark:border-zinc-800/60 dark:bg-zinc-950/25">
             <p className="text-[11px] font-semibold uppercase text-muted-foreground">Stage</p>
             <p className="mt-1 font-medium text-foreground">{stage.title}</p>
             {stage.internalNotes ? (
@@ -193,7 +200,7 @@ function PreviewBody({ preview }: { preview: WorkTemplateLibraryPreview }) {
             <p className="text-[11px] font-semibold uppercase text-muted-foreground">Tasks</p>
             <ul className="mt-2 space-y-2">
               {tasks.map((tk, j) => (
-                <li key={j} className="rounded-sm border border-border/60 bg-background/30 px-3 py-2 text-xs">
+                <li key={j} className="rounded-[6px] border border-border/60 bg-background/30 px-3 py-2 text-xs dark:border-zinc-800/60">
                   <p className="font-medium text-foreground">{tk.title}</p>
                   {tk.description ? <p className="mt-1 text-muted-foreground">{tk.description}</p> : null}
                   {tk.internalNotes ? (
@@ -211,7 +218,7 @@ function PreviewBody({ preview }: { preview: WorkTemplateLibraryPreview }) {
   if (isTaskOnlyPreview(preview)) {
     const tk = preview.payload.task;
       return (
-        <div className="rounded-sm border border-border bg-muted/40 p-3 text-sm">
+        <div className="rounded-[6px] border border-border bg-muted/40 p-3 text-sm dark:border-zinc-800/60 dark:bg-zinc-950/25">
           <p className="text-[11px] font-semibold uppercase text-muted-foreground">Task</p>
           <p className="mt-1 font-medium text-foreground">{tk.title}</p>
           {tk.description ? <p className="mt-1 text-muted-foreground">{tk.description}</p> : null}
@@ -262,25 +269,24 @@ export function TemplatesLibraryClient(props: TemplatesLibrarySerializedProps) {
   const detailOk = detail && "preview" in detail;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 p-6">
-      <div className="space-y-2">
-        <Link href="/app/sales/opportunities" className="text-xs font-medium text-muted-foreground hover:text-foreground">
-          ← Sales
-        </Link>
-        <h1 className="text-lg font-semibold tracking-tight text-foreground">Work templates</h1>
-        <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
-          Reusable starting points for quote line items, stages, and tasks. Quotes receive editable copies; changing a
-          template does not update existing quotes.
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Use templates from inside a quote workspace to insert materialized, quote-owned work.
-        </p>
-      </div>
+    <AppWorkspaceCanvas>
+      <div className="mx-auto w-full min-w-0 max-w-6xl space-y-8">
+        <WorkspaceCommandHeader
+          back={{ href: "/app/sales/opportunities", label: "Sales" }}
+          eyebrow="Quote prep library"
+          title="Work templates"
+          description="Reusable starting points for quote line items, stages, and tasks. Quotes receive editable copies; changing a template does not update existing quotes."
+          meta={
+            <span className="text-[11px] text-muted-foreground dark:text-zinc-500">
+              Insert from a quote workspace to materialize quote-owned work.
+            </span>
+          }
+        />
 
       <form
         method="get"
         action="/app/sales/templates"
-        className="flex flex-col gap-3 rounded-sm border border-border bg-card/10 p-4 md:flex-row md:flex-wrap md:items-end"
+        className="flex min-w-0 flex-col gap-3 rounded-[6px] border border-border bg-card/30 p-4 dark:border-zinc-800/60 dark:bg-zinc-950/30 md:flex-row md:flex-wrap md:items-end"
       >
         {filters.selected ? <input type="hidden" name="selected" value={filters.selected} /> : null}
         <div className="grid flex-1 gap-2 md:min-w-[200px]">
@@ -292,7 +298,7 @@ export function TemplatesLibraryClient(props: TemplatesLibrarySerializedProps) {
             name="q"
             key={filters.q ?? ""}
             defaultValue={filters.q ?? ""}
-            className="rounded-sm"
+            className="rounded-[5px]"
             placeholder="Search…"
             autoComplete="off"
           />
@@ -305,7 +311,7 @@ export function TemplatesLibraryClient(props: TemplatesLibrarySerializedProps) {
             id="tmpl-kind"
             name="kind"
             defaultValue={filters.kind ?? "all"}
-            className="h-9 rounded-sm border border-input bg-background px-2 text-sm"
+            className="h-9 rounded-[5px] border border-input bg-background px-2 text-sm"
           >
             <option value="all">All kinds</option>
             <option value={QuoteWorkTemplateKind.LINE_ITEM_WITH_PLAN}>Line + plan</option>
@@ -321,87 +327,87 @@ export function TemplatesLibraryClient(props: TemplatesLibrarySerializedProps) {
             id="tmpl-status"
             name="status"
             defaultValue={filters.status}
-            className="h-9 rounded-sm border border-input bg-background px-2 text-sm"
+            className="h-9 rounded-[5px] border border-input bg-background px-2 text-sm"
           >
             <option value="active">Active</option>
             <option value="archived">Archived</option>
             <option value="all">All</option>
           </select>
         </div>
-        <Button type="submit" size="sm" className="rounded-sm md:mb-0.5">
+        <Button type="submit" size="sm" className="rounded-[5px] md:mb-0.5">
           Apply filters
         </Button>
       </form>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,22rem)]">
         <div className="min-w-0 space-y-3">
-          <h2 className="text-sm font-semibold text-foreground">Library</h2>
+          <h2 className="text-sm font-semibold text-foreground dark:text-zinc-100">Library</h2>
           {rows.length === 0 ? (
-            <div className="rounded-sm border border-dashed border-border bg-muted/5 px-4 py-10 text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">No templates match these filters.</p>
+            <div className="rounded-[6px] border border-dashed border-border bg-muted/15 px-4 py-10 text-sm text-muted-foreground dark:border-zinc-800/60 dark:bg-zinc-950/25">
+              <p className="font-medium text-foreground dark:text-zinc-100">No templates match these filters.</p>
               <p className="mt-2 leading-relaxed">
                 Save a line, stage, or task as a template from a quote workspace, or widen filters to see archived
                 items.
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-sm border border-border">
-              <table className="w-full min-w-[560px] border-collapse text-left text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/20 text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">Name</th>
-                    <th className="px-3 py-2 font-medium">Kind</th>
-                    <th className="px-3 py-2 font-medium">Updated</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => {
-                    const active = filters.selected === r.id;
-                    return (
-                      <tr key={r.id} className={cn("border-b border-border/80", active && "bg-primary/5")}>
-                        <td className="px-3 py-2 align-top">
-                          <Link
-                            href={buildLibraryHref({ ...filters, selected: r.id })}
-                            className="font-medium text-primary hover:underline"
-                          >
-                            {r.name}
-                          </Link>
-                          {r.description ? (
-                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{r.description}</p>
-                          ) : null}
-                          {r.tags.length ? (
-                            <p className="mt-1 text-[11px] text-muted-foreground">{r.tags.join(" · ")}</p>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-2 align-top text-xs text-muted-foreground">{formatTemplateKindLabel(r.kind)}</td>
-                        <td className="whitespace-nowrap px-3 py-2 align-top text-xs text-muted-foreground">
+            <ul className="min-w-0 divide-y divide-border rounded-[6px] border border-border dark:divide-zinc-800/60 dark:border-zinc-800/60">
+              {rows.map((r) => {
+                const active = filters.selected === r.id;
+                return (
+                  <li
+                    key={r.id}
+                    className={cn(
+                      "min-w-0 p-3.5 transition-colors sm:p-4",
+                      active ? "bg-primary/5 dark:bg-blue-500/[0.06]" : "hover:bg-muted/25 dark:hover:bg-zinc-900/40",
+                    )}
+                  >
+                    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <Link
+                          href={buildLibraryHref({ ...filters, selected: r.id })}
+                          className="block truncate text-sm font-semibold text-primary hover:underline dark:text-blue-400"
+                        >
+                          {r.name}
+                        </Link>
+                        {r.description ? (
+                          <p className="line-clamp-2 text-xs text-muted-foreground dark:text-zinc-500">{r.description}</p>
+                        ) : null}
+                        {r.tags.length ? (
+                          <p className="text-[11px] text-muted-foreground dark:text-zinc-600">{r.tags.join(" · ")}</p>
+                        ) : null}
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground dark:text-zinc-600">
+                          {formatTemplateKindLabel(r.kind)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-start gap-1 text-[11px] text-muted-foreground sm:items-end sm:text-right dark:text-zinc-500">
+                        <time className="tabular-nums">
                           {new Date(r.updatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                        </td>
-                        <td className="px-3 py-2 align-top text-xs">
-                          {r.archivedAt ? (
-                            <span className="rounded-sm border border-border px-1.5 py-0.5 text-muted-foreground">
-                              Archived
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">Active</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </time>
+                        {r.archivedAt ? (
+                          <span className="rounded-[4px] border border-amber-500/35 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200/90">
+                            Archived
+                          </span>
+                        ) : (
+                          <span className="rounded-[4px] border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-400/90">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
 
-        <aside className="min-w-0 space-y-3 rounded-sm border border-border bg-card/10 p-4">
-          <h2 className="text-sm font-semibold text-foreground">Preview & actions</h2>
+        <aside className="min-w-0 space-y-3 rounded-[6px] border border-border bg-card/80 p-4 dark:border-zinc-800/60 dark:bg-zinc-950/40">
+          <h2 className="text-sm font-semibold text-foreground dark:text-zinc-100">Preview & actions</h2>
           {!filters.selected ? (
             <p className="text-sm text-muted-foreground">Select a template from the list to inspect its structure.</p>
           ) : detail && "reason" in detail ? (
-            <p className="text-sm text-destructive" role="status">
+            <p className="text-sm font-medium text-destructive dark:text-red-400" role="status">
               {detail.reason === "not_found"
                 ? "Template not found in this organization."
                 : "This template’s stored payload failed validation and cannot be previewed."}
@@ -425,17 +431,17 @@ export function TemplatesLibraryClient(props: TemplatesLibrarySerializedProps) {
               </p>
               {canManage ? (
                 <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                  <Button type="button" size="sm" variant="secondary" className="rounded-sm" onClick={() => setEditOpen(true)}>
+                  <Button type="button" size="sm" variant="secondary" className="rounded-[5px] font-semibold" onClick={() => setEditOpen(true)}>
                     Edit metadata
                   </Button>
                   {!detail.archivedAt ? (
-                    <Button type="button" size="sm" variant="outline" className="rounded-sm" onClick={() => setConfirmArchiveOpen(true)}>
+                    <Button type="button" size="sm" variant="outline" className="rounded-[5px] font-semibold" onClick={() => setConfirmArchiveOpen(true)}>
                       Archive
                     </Button>
                   ) : (
                     <form action={restoreAction}>
                       <input type="hidden" name="templateId" value={detail.id} />
-                      <Button type="submit" size="sm" className="rounded-sm">
+                      <Button type="submit" size="sm" className="rounded-[5px] font-semibold">
                         Restore
                       </Button>
                     </form>
@@ -453,7 +459,7 @@ export function TemplatesLibraryClient(props: TemplatesLibrarySerializedProps) {
           )}
 
           <Dialog open={editOpen} onOpenChange={setEditOpen}>
-            <DialogContent className="max-w-lg border-border bg-background text-foreground">
+            <DialogContent className={cn(workspaceDialogContentClass(), "max-w-lg min-w-0 overflow-x-hidden")}>
               {detailOk && detail ? (
                 <>
                   <DialogHeader>
@@ -466,7 +472,7 @@ export function TemplatesLibraryClient(props: TemplatesLibrarySerializedProps) {
                     <input type="hidden" name="templateId" value={detail.id} />
                     <div className="space-y-2">
                       <Label htmlFor="edit-name">Name</Label>
-                      <Input id="edit-name" name="name" required className="rounded-sm" defaultValue={detail.name} />
+                      <Input id="edit-name" name="name" required className={cn(workspaceInputClass(), "min-w-0")} defaultValue={detail.name} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="edit-desc">Description</Label>
@@ -474,20 +480,20 @@ export function TemplatesLibraryClient(props: TemplatesLibrarySerializedProps) {
                         id="edit-desc"
                         name="description"
                         rows={3}
-                        className="rounded-sm"
+                        className={cn(workspaceTextareaClass(), "min-h-[5rem] min-w-0 resize-y")}
                         defaultValue={detail.description ?? ""}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="edit-tags">Tags (comma-separated)</Label>
-                      <Input id="edit-tags" name="tags" className="rounded-sm" defaultValue={detail.tags.join(", ")} />
+                      <Input id="edit-tags" name="tags" className={cn(workspaceInputClass(), "min-w-0")} defaultValue={detail.tags.join(", ")} />
                     </div>
                     <ActionError state={metaState} />
                     <DialogFooter className="gap-2">
-                      <Button type="button" variant="outline" size="sm" className="rounded-sm" onClick={() => setEditOpen(false)}>
+                      <Button type="button" variant="outline" size="sm" className="rounded-[5px] font-semibold" onClick={() => setEditOpen(false)}>
                         Cancel
                       </Button>
-                      <Button type="submit" size="sm" className="rounded-sm">
+                      <Button type="submit" size="sm" className="rounded-[5px] font-semibold">
                         Save metadata
                       </Button>
                     </DialogFooter>
@@ -498,7 +504,7 @@ export function TemplatesLibraryClient(props: TemplatesLibrarySerializedProps) {
           </Dialog>
 
           <Dialog open={confirmArchiveOpen} onOpenChange={setConfirmArchiveOpen}>
-            <DialogContent className="max-w-md border-border bg-background text-foreground">
+            <DialogContent className={cn(workspaceDialogContentClass(), "max-w-md min-w-0 overflow-x-hidden")}>
               <DialogHeader>
                 <DialogTitle>Archive template</DialogTitle>
                 <DialogDescription className="text-muted-foreground">
@@ -511,10 +517,10 @@ export function TemplatesLibraryClient(props: TemplatesLibrarySerializedProps) {
                   <input type="hidden" name="templateId" value={detail.id} />
                   <ActionError state={archiveState} />
                   <DialogFooter className="gap-2">
-                    <Button type="button" variant="outline" size="sm" className="rounded-sm" onClick={() => setConfirmArchiveOpen(false)}>
+                    <Button type="button" variant="outline" size="sm" className="rounded-[5px] font-semibold" onClick={() => setConfirmArchiveOpen(false)}>
                       Cancel
                     </Button>
-                    <Button type="submit" size="sm" variant="destructive" className="rounded-sm">
+                    <Button type="submit" size="sm" variant="destructive" className="rounded-[5px] font-semibold">
                       Archive template
                     </Button>
                   </DialogFooter>
@@ -524,6 +530,7 @@ export function TemplatesLibraryClient(props: TemplatesLibrarySerializedProps) {
           </Dialog>
         </aside>
       </div>
-    </div>
+      </div>
+    </AppWorkspaceCanvas>
   );
 }

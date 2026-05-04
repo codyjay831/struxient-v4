@@ -13,6 +13,13 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AppWorkspaceCanvas } from "@/components/workspace/app-workspace-canvas";
+import {
+  workspaceInputClass,
+  workspaceSelectClass,
+  workspaceTextareaClass,
+} from "@/components/workspace/workspace-form-controls";
+import { WorkspacePanelFrame } from "@/components/workspace/workspace-panel-frame";
 import { cn } from "@/lib/utils";
 
 export type QuoteWorkbenchStep = "basics" | "proposal" | "lines" | "execution" | "readiness" | "activity";
@@ -59,25 +66,9 @@ const stepMeta: Record<
   },
 };
 
-/** Quote workspace: bounded width, no negative horizontal bleed; theme tokens + dark premium. */
+/** Quote workspace surface — shared canvas primitive. */
 export function QuoteWorkbenchCanvas({ children }: { children: ReactNode }) {
-  return (
-    <div
-      className={cn(
-        "relative w-full min-w-0 max-w-full overflow-x-hidden",
-        "min-h-[calc(100vh-4rem)] border-y border-border bg-muted/25 text-foreground",
-        "dark:border-zinc-900/80 dark:bg-background dark:text-foreground",
-      )}
-    >
-      <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(59,130,246,0.05),transparent)] dark:bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(59,130,246,0.08),transparent)]"
-        aria-hidden
-      />
-      <div className="relative mx-auto min-w-0 max-w-[min(1720px,100%)] px-3 pb-16 pt-3 sm:px-5 sm:pt-4 lg:px-8">
-        {children}
-      </div>
-    </div>
-  );
+  return <AppWorkspaceCanvas>{children}</AppWorkspaceCanvas>;
 }
 
 type CommandBarProps = {
@@ -230,7 +221,7 @@ export function QuoteWorkbenchStepRail({ active, onSelect, counts, flags }: Step
                   {meta.label}
                 </span>
                 {count != null && count !== "" ? (
-                  <span className="shrink-0 rounded-[3px] bg-muted px-1 font-mono text-[10px] text-muted-foreground dark:bg-zinc-900 dark:text-zinc-500">
+                  <span className="shrink-0 rounded-[4px] bg-muted px-1 font-mono text-[10px] text-muted-foreground dark:bg-zinc-900 dark:text-zinc-500">
                     {count}
                   </span>
                 ) : null}
@@ -375,54 +366,23 @@ export function QuoteWorkbenchIntelligencePanel({
   );
 }
 
-export function QuoteWorkbenchPanelFrame({
-  kicker,
-  title,
-  subtitle,
-  children,
-}: {
+export function QuoteWorkbenchPanelFrame(props: {
   kicker: string;
   title: string;
   subtitle?: string;
   children: ReactNode;
 }) {
-  return (
-    <div className="min-h-0 min-w-0">
-      <div className="mb-5 border-b border-border pb-4 dark:border-zinc-800/50">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary dark:text-blue-400/90">{kicker}</p>
-        <h2 className="mt-1 text-lg font-semibold tracking-tight text-foreground dark:text-white">{title}</h2>
-        {subtitle ? (
-          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground dark:text-zinc-500">{subtitle}</p>
-        ) : null}
-      </div>
-      <div className="min-w-0 space-y-6">{children}</div>
-    </div>
-  );
+  return <WorkspacePanelFrame {...props} />;
 }
 
 export function quoteWorkbenchInputClass() {
-  return cn(
-    "h-8 rounded-[5px] border border-input bg-background text-xs text-foreground placeholder:text-muted-foreground",
-    "focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40",
-    "dark:border-zinc-700/80 dark:bg-zinc-950/80 dark:text-zinc-100 dark:placeholder:text-zinc-600",
-    "dark:focus-visible:border-blue-500/50 dark:focus-visible:ring-blue-500/30",
-  );
+  return workspaceInputClass();
 }
 
 export function quoteWorkbenchTextareaClass() {
-  return cn(
-    "rounded-[5px] border border-input bg-background text-xs text-foreground placeholder:text-muted-foreground",
-    "focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40",
-    "dark:border-zinc-700/80 dark:bg-zinc-950/80 dark:text-zinc-100 dark:placeholder:text-zinc-600",
-    "dark:focus-visible:border-blue-500/50 dark:focus-visible:ring-blue-500/30",
-  );
+  return workspaceTextareaClass();
 }
 
 export function quoteWorkbenchSelectClass() {
-  return cn(
-    "h-8 rounded-[5px] border border-input bg-background px-2 text-xs text-foreground",
-    "focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40",
-    "dark:border-zinc-700/80 dark:bg-zinc-950/80 dark:text-zinc-100",
-    "dark:focus-visible:border-blue-500/50 dark:focus-visible:ring-blue-500/30",
-  );
+  return workspaceSelectClass();
 }

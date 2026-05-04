@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ScheduledWorkStatus } from "@prisma/client";
 import { ScheduledWorkRowActions } from "@/app/(app)/app/jobs/[jobId]/scheduled-work-row-actions";
+import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
 import { formatReadinessShort, readinessBadgeClassName } from "@/lib/schedule-readiness-ui";
 import type { ScheduleReadiness } from "@/server/phase7/scheduled-work-types";
 import type { ScheduledWorkListRow } from "@/server/phase7/scheduled-work-queries";
@@ -16,74 +17,72 @@ export function JobScheduleSection(props: {
   const { canMutate, items } = props;
 
   return (
-    <section className="space-y-4 rounded-sm border border-border bg-card/10 p-5">
-      <div>
-        <h2 className="text-sm font-semibold text-foreground">Schedule</h2>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Booked time windows for this job. Readiness reflects current job and task facts — scheduled does not always
-          mean ready for field execution.
-        </p>
-      </div>
+    <div className="min-w-0 space-y-4">
+      <p className="text-xs leading-relaxed text-muted-foreground dark:text-zinc-500">
+        Booked time windows for this job. Readiness reflects current job and task facts — scheduled does not always mean
+        ready for field execution. Use the global{" "}
+        <Link href="/app/schedule" className="font-medium text-primary hover:underline dark:text-blue-400">
+          Schedule
+        </Link>{" "}
+        page to review work across jobs.
+      </p>
 
       {items.length === 0 ? (
-        <div className="rounded-sm border border-border/80 bg-background/40 px-4 py-5">
-          <p className="text-sm text-foreground">No scheduled work for this job yet.</p>
-          <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">
-            When dates are firm, office staff can place tasks on the schedule from the execution plan below. Use the
-            global{" "}
-            <Link href="/app/schedule" className="font-medium text-primary hover:underline">
-              Schedule
-            </Link>{" "}
-            page to review work across jobs.
-          </p>
-        </div>
+        <WorkspaceEmptyState
+          title="No scheduled work for this job yet"
+          description="When dates are firm, office staff can place tasks on the schedule from the execution plan below."
+        />
       ) : (
-        <ul className="divide-y divide-border rounded-sm border border-border">
+        <ul className="min-w-0 divide-y divide-border overflow-hidden rounded-[6px] border border-border dark:divide-zinc-800/60 dark:border-zinc-800/60">
           {items.map(({ row, readiness }) => (
-            <li key={row.id} className="px-4 py-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">{row.title}</span>
+            <li key={row.id} className="min-w-0 px-3.5 py-3.5 sm:px-4 sm:py-4">
+              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground dark:text-zinc-100">{row.title}</span>
                     <span
-                      className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${readinessBadgeClassName(readiness.label)}`}
+                      className={`rounded-[4px] border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${readinessBadgeClassName(readiness.label)}`}
                     >
                       {formatReadinessShort(readiness.label)}
                     </span>
-                    <span className="rounded-sm border border-border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <span className="rounded-[4px] border border-border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground dark:border-zinc-800 dark:text-zinc-500">
                       {formatStatus(row.status)}
                     </span>
                   </div>
-                  <p className="text-xs tabular-nums text-muted-foreground">
+                  <p className="text-xs tabular-nums text-muted-foreground dark:text-zinc-500">
                     {row.scheduledStartAt.toLocaleString()} – {row.scheduledEndAt.toLocaleString()}
                   </p>
-                  <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">{readiness.explanation}</p>
+                  <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground dark:text-zinc-500">
+                    {readiness.explanation}
+                  </p>
                   {row.notes ? (
-                    <p className="max-w-2xl text-xs leading-relaxed text-foreground/90">
-                      <span className="font-medium text-muted-foreground">Notes: </span>
+                    <p className="max-w-2xl text-xs leading-relaxed text-foreground/90 dark:text-zinc-300">
+                      <span className="font-medium text-muted-foreground dark:text-zinc-500">Notes: </span>
                       {row.notes}
                     </p>
                   ) : null}
                   {row.status === ScheduledWorkStatus.CANCELED && row.cancelReason ? (
-                    <p className="max-w-2xl text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground/90">Cancel reason: </span>
+                    <p className="max-w-2xl text-xs text-muted-foreground dark:text-zinc-500">
+                      <span className="font-medium text-foreground/90 dark:text-zinc-200">Cancel reason: </span>
                       {row.cancelReason}
                     </p>
                   ) : null}
                 </div>
+                {canMutate ? (
+                  <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+                    <ScheduledWorkRowActions
+                      scheduledWorkId={row.id}
+                      status={row.status}
+                      scheduledStartAt={row.scheduledStartAt}
+                      scheduledEndAt={row.scheduledEndAt}
+                    />
+                  </div>
+                ) : null}
               </div>
-              {canMutate ? (
-                <ScheduledWorkRowActions
-                  scheduledWorkId={row.id}
-                  status={row.status}
-                  scheduledStartAt={row.scheduledStartAt}
-                  scheduledEndAt={row.scheduledEndAt}
-                />
-              ) : null}
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </div>
   );
 }

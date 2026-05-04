@@ -15,7 +15,7 @@ export function CreateQuoteDraftForm({ opportunityId }: { opportunityId: string 
           {state.error}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending} className="rounded-sm">
+      <Button type="submit" disabled={pending} className="rounded-[5px] font-semibold">
         {pending ? "Creating…" : "Create quote draft"}
       </Button>
       <p className="text-xs leading-relaxed text-muted-foreground">

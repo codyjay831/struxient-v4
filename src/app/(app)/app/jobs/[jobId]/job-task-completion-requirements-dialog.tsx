@@ -15,15 +15,19 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import type { CompletionRequirementDto } from "@/server/phase13/completion-requirements";
+import { workspaceDialogContentClass, workspaceSelectClass } from "@/components/workspace/workspace-form-controls";
+import { cn } from "@/lib/utils";
 
 function Err({ r }: { r: CompletionRequirementMutationResult | undefined }) {
   if (!r || r.ok) return null;
   return (
-    <p className="text-xs text-destructive" role="alert">
+    <p className="text-xs font-medium text-destructive dark:text-red-400" role="alert">
       {r.error}
     </p>
   );
 }
+
+const labelSm = "text-[10px] font-semibold uppercase tracking-wide text-muted-foreground dark:text-zinc-600";
 
 export function JobTaskCompletionRequirementsDialog(props: {
   jobId: string;
@@ -63,42 +67,62 @@ export function JobTaskCompletionRequirementsDialog(props: {
       }}
     >
       <DialogTrigger asChild>
-        <Button type="button" size="sm" variant="outline" className="rounded-sm text-xs">
+        <Button type="button" size="sm" variant="outline" className="rounded-[5px] text-xs font-semibold">
           Evidence requirement
         </Button>
       </DialogTrigger>
-      <DialogContent className="rounded-sm border-border bg-background sm:max-w-md">
+      <DialogContent className={cn(workspaceDialogContentClass(), "sm:max-w-md")}>
         <DialogHeader>
-          <DialogTitle className="text-base">Completion evidence requirement</DialogTitle>
-          <DialogDescription className="text-xs leading-relaxed text-muted-foreground">
+          <DialogTitle className="text-base font-semibold text-foreground dark:text-zinc-100">
+            Completion evidence requirement
+          </DialogTitle>
+          <DialogDescription className="text-xs leading-relaxed text-muted-foreground dark:text-zinc-500">
             Configure whether this task must have accepted job evidence before it can be marked complete. This does
             not change the quote or sent snapshot.
           </DialogDescription>
         </DialogHeader>
-        <form action={action} className="space-y-4">
+        <form action={action} className="min-w-0 space-y-4">
           <input type="hidden" name="jobId" value={jobId} />
           <input type="hidden" name="jobTaskId" value={taskId} />
           <input type="hidden" name="required" value={required ? "true" : "false"} />
           <input type="hidden" name="allowJobLevelEvidence" value={allowJobLevel ? "true" : "false"} />
-          <p className="text-xs text-muted-foreground">
-            Task: <span className="font-medium text-foreground">{taskTitle}</span>
-          </p>
+
+          {requirement.state === "invalid" ? (
+            <div
+              className="rounded-[6px] border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 dark:border-amber-500/30 dark:bg-amber-500/10"
+              role="status"
+            >
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200">
+                Invalid stored configuration
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-950/90 dark:text-amber-100/90">{requirement.message}</p>
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground dark:text-zinc-500">
+                Saving a valid requirement below replaces the invalid JSON for this task.
+              </p>
+            </div>
+          ) : null}
+
+          <div className="rounded-[6px] border border-border/80 bg-card/20 px-3 py-2.5 dark:border-zinc-800/60 dark:bg-zinc-950/30">
+            <p className={labelSm}>Task</p>
+            <p className="mt-0.5 text-sm font-medium text-foreground dark:text-zinc-100">{taskTitle}</p>
+          </div>
+
           <div className="flex items-center gap-2">
             <input
               id={`req-${taskId}`}
               type="checkbox"
-              className="h-3.5 w-3.5 rounded-sm border border-input"
+              className="size-3.5 shrink-0 rounded-[4px] border border-input dark:border-zinc-600"
               checked={required}
               onChange={(e) => setRequired(e.target.checked)}
             />
-            <Label htmlFor={`req-${taskId}`} className="text-sm font-normal text-foreground cursor-pointer">
+            <Label htmlFor={`req-${taskId}`} className="cursor-pointer text-xs font-normal text-foreground dark:text-zinc-200">
               Require accepted evidence before completion
             </Label>
           </div>
           {required ? (
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor={`min-${taskId}`} className="text-xs text-muted-foreground">
+            <div className="space-y-3 rounded-[6px] border border-border/80 bg-card/15 p-3 dark:border-zinc-800/60 dark:bg-zinc-950/20">
+              <div className="min-w-0 space-y-1.5">
+                <Label htmlFor={`min-${taskId}`} className={labelSm}>
                   Minimum accepted evidence count
                 </Label>
                 <select
@@ -106,7 +130,7 @@ export function JobTaskCompletionRequirementsDialog(props: {
                   name="minAcceptedCount"
                   value={minCount}
                   onChange={(e) => setMinCount(Number(e.target.value))}
-                  className="flex h-9 w-full rounded-sm border border-input bg-background px-2 text-sm"
+                  className={cn(workspaceSelectClass(), "h-9 w-full min-w-0")}
                 >
                   {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
                     <option key={n} value={n}>
@@ -119,11 +143,11 @@ export function JobTaskCompletionRequirementsDialog(props: {
                 <input
                   id={`jl-${taskId}`}
                   type="checkbox"
-                  className="h-3.5 w-3.5 rounded-sm border border-input"
+                  className="size-3.5 shrink-0 rounded-[4px] border border-input dark:border-zinc-600"
                   checked={allowJobLevel}
                   onChange={(e) => setAllowJobLevel(e.target.checked)}
                 />
-                <Label htmlFor={`jl-${taskId}`} className="text-sm font-normal text-foreground cursor-pointer">
+                <Label htmlFor={`jl-${taskId}`} className="cursor-pointer text-xs font-normal text-foreground dark:text-zinc-200">
                   Allow job-level accepted evidence to count (not only rows linked to this task)
                 </Label>
               </div>
@@ -133,10 +157,10 @@ export function JobTaskCompletionRequirementsDialog(props: {
           )}
           <Err r={state} />
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="ghost" size="sm" className="rounded-sm" onClick={() => setOpen(false)}>
+            <Button type="button" variant="ghost" size="sm" className="rounded-[5px]" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" className="rounded-sm" disabled={pending}>
+            <Button type="submit" size="sm" className="rounded-[5px] font-semibold" disabled={pending}>
               Save
             </Button>
           </DialogFooter>

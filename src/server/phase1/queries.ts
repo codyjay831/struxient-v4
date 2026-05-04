@@ -10,6 +10,13 @@ export async function listCustomersForOrg(organizationId: string) {
         where: { archivedAt: null },
         orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
       },
+      _count: {
+        select: {
+          opportunities: true,
+          quotes: true,
+          jobs: true,
+        },
+      },
     },
   });
 }
@@ -29,6 +36,7 @@ export async function getCustomerDetail(organizationId: string, customerId: stri
           title: true,
           status: true,
           serviceType: true,
+          createdAt: true,
           updatedAt: true,
         },
       },
@@ -40,8 +48,21 @@ export async function getCustomerDetail(organizationId: string, customerId: stri
           displayNumber: true,
           status: true,
           title: true,
+          totalCents: true,
+          createdAt: true,
           updatedAt: true,
           opportunity: { select: { id: true, title: true } },
+        },
+      },
+      jobs: {
+        orderBy: { updatedAt: "desc" },
+        take: 30,
+        select: {
+          id: true,
+          displayNumber: true,
+          status: true,
+          title: true,
+          updatedAt: true,
         },
       },
     },
@@ -110,6 +131,8 @@ export async function getOpportunityDetail(organizationId: string, opportunityId
           title: true,
           updatedAt: true,
           sentAt: true,
+          createdAt: true,
+          totalCents: true,
         },
       },
     },

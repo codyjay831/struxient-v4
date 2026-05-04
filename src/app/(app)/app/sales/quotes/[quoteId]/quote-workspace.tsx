@@ -1605,7 +1605,7 @@ function LineExecutionTaskEditor({
   const statusShort = task.status.replace(/_/g, " ");
 
   const badgeClass =
-    "inline-flex max-w-full items-center truncate rounded-[3px] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground dark:text-zinc-400";
+    "inline-flex max-w-full items-center truncate rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground dark:text-zinc-400";
 
   return (
     <li className="min-w-0 list-none border-b border-border/25 pb-2 last:border-b-0 dark:border-zinc-800/30">

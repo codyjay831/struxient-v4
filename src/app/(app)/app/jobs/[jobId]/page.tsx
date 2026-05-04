@@ -59,6 +59,13 @@ import {
   acceptedEvidenceCountForTaskFromMaps,
   loadAcceptedEvidenceCountMapsForJob,
 } from "@/server/phase13/evidence-requirement-evaluation";
+import { MetadataPill } from "@/components/customers/customer-area";
+import { AppWorkspaceCanvas } from "@/components/workspace/app-workspace-canvas";
+import { WorkspaceCommandHeader } from "@/components/workspace/workspace-command-header";
+import { WorkspaceEmptyState } from "@/components/workspace/workspace-empty-state";
+import { WorkspacePanelFrame } from "@/components/workspace/workspace-panel-frame";
+import { WorkspaceSummaryPanel } from "@/components/workspace/workspace-summary-panel";
+import { Button } from "@/components/ui/button";
 
 const TASK_STATUS_ORDER: JobTaskStatus[] = [
   JobTaskStatus.NOT_STARTED,
@@ -258,41 +265,75 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
     );
   }
 
+  const headerDescription = [
+    workspaceJob.customer.displayName,
+    `Activated ${workspaceJob.activatedAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`,
+    `Quote #${workspaceJob.quote.displayNumber}`,
+    workspaceJob.opportunityId ? "Opportunity linked" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <div className="mx-auto max-w-5xl space-y-8 p-6">
-      <div className="space-y-2">
-        <Link href="/app/jobs" className="text-xs font-medium text-muted-foreground hover:text-foreground">
-          ← Jobs
-        </Link>
-        <div className="flex flex-wrap items-baseline gap-3">
-          <h1 className="text-lg font-semibold tracking-tight text-foreground">{workspaceJob.title}</h1>
-          <span className="rounded-sm border border-border bg-muted/30 px-2 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">
-            Job #{workspaceJob.displayNumber}
-          </span>
-          <span className="rounded-sm border border-border bg-muted/30 px-2 py-0.5 text-xs text-muted-foreground">
-            {formatJobStatus(workspaceJob.status)}
-          </span>
-        </div>
-        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          {workspaceJob.customer.displayName} · Activated {workspaceJob.activatedAt.toLocaleString()} · Source{" "}
-          <Link href={`/app/sales/quotes/${workspaceJob.quote.id}`} className="font-medium text-primary hover:underline tabular-nums">
-            quote #{workspaceJob.quote.displayNumber}
-          </Link>
-        </p>
+    <AppWorkspaceCanvas>
+      <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6 pb-8">
+        <WorkspaceCommandHeader
+          back={{ href: "/app/jobs", label: "Jobs" }}
+          eyebrow="Job workspace"
+          title={workspaceJob.title}
+          badges={
+            <>
+              <MetadataPill variant="outline" className="font-mono">
+                #{workspaceJob.displayNumber}
+              </MetadataPill>
+              <MetadataPill variant="muted">{formatJobStatus(workspaceJob.status)}</MetadataPill>
+            </>
+          }
+          description={headerDescription}
+          meta={
+            <>
+              <span>
+                <span className="font-medium text-foreground/90">Updated</span>{" "}
+                {workspaceJob.updatedAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+              </span>
+              <span>
+                <span className="font-medium text-foreground/90">Created</span>{" "}
+                {workspaceJob.createdAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+              </span>
+            </>
+          }
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline" size="sm" className="rounded-[5px] font-semibold">
+                <Link href={`/app/customers/${workspaceJob.customer.id}`}>Customer</Link>
+              </Button>
+              <Button asChild variant="outline" size="sm" className="rounded-[5px] font-semibold">
+                <Link href={`/app/sales/quotes/${workspaceJob.quote.id}`}>Quote workspace</Link>
+              </Button>
+              {workspaceJob.opportunityId ? (
+                <Button asChild variant="outline" size="sm" className="rounded-[5px] font-semibold">
+                  <Link href={`/app/sales/opportunities/${workspaceJob.opportunityId}`}>Opportunity</Link>
+                </Button>
+              ) : null}
+            </div>
+          }
+        />
+
         {workspaceJob.statusReason && workspaceJob.status === JobStatus.CANCELED ? (
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">Cancel reason: </span>
+          <p className="max-w-3xl rounded-[6px] border border-border bg-muted/20 px-4 py-2.5 text-sm text-muted-foreground dark:border-zinc-800/60 dark:bg-zinc-950/40">
+            <span className="font-medium text-foreground dark:text-zinc-200">Cancel reason: </span>
             {workspaceJob.statusReason}
           </p>
         ) : null}
         {workspaceJob.statusReason && workspaceJob.status === JobStatus.PAUSED ? (
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">Pause note: </span>
+          <p className="max-w-3xl rounded-[6px] border border-border bg-muted/20 px-4 py-2.5 text-sm text-muted-foreground dark:border-zinc-800/60 dark:bg-zinc-950/40">
+            <span className="font-medium text-foreground dark:text-zinc-200">Pause note: </span>
             {workspaceJob.statusReason}
           </p>
         ) : null}
-      </div>
 
+        <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_min(100%,17rem)] xl:grid-cols-[minmax(0,1fr)_min(100%,19rem)]">
+          <div className="min-w-0 space-y-6">
       {showCustomerPortalSection ? (
         <StaffPortalLinkPanel
           quoteId={workspaceJob.quote.id}
@@ -354,11 +395,11 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
 
       {workspaceJob.status === JobStatus.PAUSED ? (
         <div
-          className="rounded-sm border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-foreground"
+          className="rounded-[6px] border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-foreground dark:border-amber-500/25 dark:bg-amber-500/10"
           role="status"
         >
           <p className="font-medium text-amber-900 dark:text-amber-100">Job paused</p>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground dark:text-zinc-400">
             Field roles cannot update tasks until the job is resumed. Office staff may still update tasks if work
             continues on site under office direction.
           </p>
@@ -366,9 +407,12 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
       ) : null}
 
       {workspaceJob.status === JobStatus.COMPLETED ? (
-        <div className="rounded-sm border border-border bg-muted/20 px-4 py-3 text-sm text-foreground" role="status">
-          <p className="font-medium">Job completed</p>
-          <p className="mt-1 text-xs text-muted-foreground">
+        <div
+          className="rounded-[6px] border border-border bg-muted/20 px-4 py-3 text-sm text-foreground dark:border-zinc-800/60 dark:bg-zinc-950/40"
+          role="status"
+        >
+          <p className="font-medium dark:text-zinc-100">Job completed</p>
+          <p className="mt-1 text-xs text-muted-foreground dark:text-zinc-400">
             This job is closed. Task status updates are disabled. Scope and pricing remain in the quote workspace.
           </p>
         </div>
@@ -376,118 +420,202 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
 
       {workspaceJob.status === JobStatus.CANCELED ? (
         <div
-          className="rounded-sm border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-foreground"
+          className="rounded-[6px] border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-foreground dark:border-red-900/40 dark:bg-red-950/25"
           role="status"
         >
-          <p className="font-medium text-destructive">Job canceled</p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="font-medium text-destructive dark:text-red-400">Job canceled</p>
+          <p className="mt-1 text-xs text-muted-foreground dark:text-zinc-400">
             This job is closed. Task status updates are disabled. The linked quote is unchanged in the archive.
           </p>
         </div>
       ) : null}
 
-      <section className="rounded-sm border border-border bg-card/10 p-5 space-y-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">Progress</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Required tasks complete:{" "}
-              <span className="font-medium tabular-nums text-foreground">
-                {progress.requiredComplete}/{progress.requiredTotal}
-              </span>
-              {" · "}
-              Total tasks: <span className="font-medium tabular-nums text-foreground">{progress.totalTasks}</span>
-            </p>
-            <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              {TASK_STATUS_ORDER.map((s) => (
-                <li key={s}>
-                  {formatJobTaskStatus(s)}:{" "}
-                  <span className="tabular-nums font-medium text-foreground">{progress.byStatus[s]}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          {showLifecycle ? <JobLifecycleToolbar jobId={workspaceJob.id} status={workspaceJob.status} /> : null}
-        </div>
-      </section>
+            <WorkspacePanelFrame
+              kicker="Execution"
+              title="Progress & job controls"
+              subtitle="Required task completion and task mix by status. Job lifecycle actions respect your role."
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground dark:text-zinc-500">
+                    Required tasks complete:{" "}
+                    <span className="font-medium tabular-nums text-foreground dark:text-zinc-200">
+                      {progress.requiredComplete}/{progress.requiredTotal}
+                    </span>
+                    {" · "}
+                    Total tasks:{" "}
+                    <span className="font-medium tabular-nums text-foreground dark:text-zinc-200">{progress.totalTasks}</span>
+                  </p>
+                  <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground dark:text-zinc-500">
+                    {TASK_STATUS_ORDER.map((s) => (
+                      <li key={s}>
+                        {formatJobTaskStatus(s)}:{" "}
+                        <span className="tabular-nums font-medium text-foreground dark:text-zinc-200">{progress.byStatus[s]}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                {showLifecycle ? <JobLifecycleToolbar jobId={workspaceJob.id} status={workspaceJob.status} /> : null}
+              </div>
+            </WorkspacePanelFrame>
 
-      {showSchedule ? (
-        <JobScheduleSection canMutate={canMutateScheduleRows} items={scheduleItems} />
-      ) : null}
+            {showSchedule ? (
+              <WorkspacePanelFrame
+                kicker="Schedule"
+                title="Scheduled work"
+                subtitle="Windows tied to job tasks. Readiness is derived from job and task facts."
+              >
+                <JobScheduleSection canMutate={canMutateScheduleRows} items={scheduleItems} />
+              </WorkspacePanelFrame>
+            ) : null}
 
-      <section className="space-y-4 rounded-sm border border-border bg-card/10 p-5">
-        <h2 className="text-sm font-semibold text-foreground">Execution plan</h2>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Structure and titles were copied from the frozen sent snapshot at activation. Task status is operational
-          only; the quote workspace remains the contract record.
-        </p>
-
-        <div className="space-y-6 pt-2">
-          {workspaceJob.lines.map((line) => (
-            <div key={line.id} className="rounded-sm border border-border/80 bg-background/40 p-4">
-              <h3 className="text-sm font-medium text-foreground">{line.title}</h3>
-              {line.customerDescription ? (
-                <p className="mt-1 text-xs text-muted-foreground">{line.customerDescription}</p>
-              ) : null}
-              <div className="mt-4 space-y-4 border-l border-border pl-4">
-                {line.stages.map((stage) => (
-                  <div key={stage.id}>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{stage.title}</p>
-                    {stage.internalNotes ? (
-                      <p className="mt-1 text-xs text-muted-foreground">{stage.internalNotes}</p>
+            <WorkspacePanelFrame
+              kicker="Plan"
+              title="Execution plan"
+              subtitle="Structure and titles were copied from the frozen sent snapshot at activation. Task status is operational only; the quote workspace remains the contract record."
+            >
+              <div className="min-w-0 space-y-5 pt-1">
+                {workspaceJob.lines.map((line) => (
+                  <div
+                    key={line.id}
+                    className="min-w-0 rounded-[6px] border border-border/80 bg-background/50 p-4 dark:border-zinc-800/60 dark:bg-zinc-950/35"
+                  >
+                    <h3 className="text-sm font-semibold text-foreground dark:text-zinc-100">{line.title}</h3>
+                    {line.customerDescription ? (
+                      <p className="mt-1 text-xs text-muted-foreground dark:text-zinc-400">{line.customerDescription}</p>
                     ) : null}
-                    <div className="mt-2 space-y-0">
-                      {stage.tasks.map((task) => (
-                        <JobTaskStatusForm
-                          key={`${task.id}-${task.status}-${task.blockedReason ?? ""}-${JSON.stringify(task.completionRequirementsJson)}`}
-                          jobId={workspaceJob.id}
-                          task={toJobTaskRowModel(
-                            task,
-                            ctx.role,
-                            evidenceView,
-                            evidenceCountByTask,
-                            acceptedEvidenceMaps,
-                          )}
-                          canUpdate={canUpdateTasks}
-                          readOnlyHint={readOnlyHint}
-                          scheduleAction={scheduleActionForTask(task)}
-                        />
+                    <div className="mt-4 min-w-0 space-y-4 border-l border-border pl-3 dark:border-zinc-800/70 sm:pl-4">
+                      {line.stages.map((stage) => (
+                        <div key={stage.id} className="min-w-0">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground dark:text-zinc-600">
+                            {stage.title}
+                          </p>
+                          {stage.internalNotes ? (
+                            <p className="mt-1 text-xs text-muted-foreground dark:text-zinc-500">{stage.internalNotes}</p>
+                          ) : null}
+                          <div className="mt-2 min-w-0 space-y-2">
+                            {stage.tasks.map((task) => (
+                              <JobTaskStatusForm
+                                key={`${task.id}-${task.status}-${task.blockedReason ?? ""}-${JSON.stringify(task.completionRequirementsJson)}`}
+                                jobId={workspaceJob.id}
+                                task={toJobTaskRowModel(
+                                  task,
+                                  ctx.role,
+                                  evidenceView,
+                                  evidenceCountByTask,
+                                  acceptedEvidenceMaps,
+                                )}
+                                canUpdate={canUpdateTasks}
+                                readOnlyHint={readOnlyHint}
+                                scheduleAction={scheduleActionForTask(task)}
+                              />
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          ))}
-        </div>
-      </section>
+            </WorkspacePanelFrame>
 
-      <section className="space-y-3 rounded-sm border border-border bg-card/10 p-5">
-        <h2 className="text-sm font-semibold text-foreground">Activity</h2>
-        <p className="text-xs text-muted-foreground">
-          Internal staff timeline (newest first). Not shown to customers or on proposals.
-        </p>
-        {activity.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No job events recorded yet.</p>
-        ) : (
-          <ul className="divide-y divide-border rounded-sm border border-border">
-            {activity.map((e) => (
-              <li key={e.id} className="px-4 py-3">
-                <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
-                  <span className="font-medium uppercase tracking-wide text-foreground/90">
-                    {e.eventType.replace(/_/g, " ")}
-                  </span>
-                  <time className="tabular-nums">{e.createdAt.toLocaleString()}</time>
-                </div>
-                <p className="mt-1 text-sm text-foreground">{e.summary}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {e.actorUser?.name ?? e.actorUser?.email ?? "System"}
+            <WorkspacePanelFrame
+              kicker="Audit"
+              title="Activity"
+              subtitle="Internal staff timeline (newest first). Not shown to customers or on proposals."
+            >
+              {activity.length === 0 ? (
+                <WorkspaceEmptyState
+                  className="border-0 bg-transparent py-6"
+                  title="No job events yet"
+                  description="Lifecycle changes, task updates, and staff actions will appear here."
+                />
+              ) : (
+                <ul className="min-w-0 divide-y divide-border overflow-hidden rounded-[6px] border border-border dark:divide-zinc-800/60 dark:border-zinc-800/60">
+                  {activity.map((e) => (
+                    <li key={e.id} className="min-w-0 px-4 py-3">
+                      <div className="flex min-w-0 flex-wrap justify-between gap-2 text-xs text-muted-foreground dark:text-zinc-500">
+                        <span className="font-semibold uppercase tracking-wide text-foreground/90 dark:text-zinc-300">
+                          {e.eventType.replace(/_/g, " ")}
+                        </span>
+                        <time className="shrink-0 tabular-nums">{e.createdAt.toLocaleString()}</time>
+                      </div>
+                      <p className="mt-1 text-sm text-foreground dark:text-zinc-200">{e.summary}</p>
+                      <p className="mt-1 text-xs text-muted-foreground dark:text-zinc-500">
+                        {e.actorUser?.name ?? e.actorUser?.email ?? "System"}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </WorkspacePanelFrame>
+          </div>
+
+          <WorkspaceSummaryPanel title="Execution brief">
+            <div className="space-y-2 text-[11px] text-muted-foreground dark:text-zinc-500">
+              <p>
+                <span className="font-medium text-foreground dark:text-zinc-200">Status</span> — {formatJobStatus(workspaceJob.status)}
+              </p>
+              <p className="min-w-0">
+                <span className="font-medium text-foreground dark:text-zinc-200">Customer</span> —{" "}
+                <Link
+                  href={`/app/customers/${workspaceJob.customer.id}`}
+                  className="text-primary hover:underline dark:text-blue-400"
+                >
+                  {workspaceJob.customer.displayName}
+                </Link>
+              </p>
+              <p className="min-w-0">
+                <span className="font-medium text-foreground dark:text-zinc-200">Quote</span> —{" "}
+                <Link
+                  href={`/app/sales/quotes/${workspaceJob.quote.id}`}
+                  className="tabular-nums text-primary hover:underline dark:text-blue-400"
+                >
+                  #{workspaceJob.quote.displayNumber}
+                </Link>
+              </p>
+              {workspaceJob.opportunityId ? (
+                <p className="min-w-0">
+                  <span className="font-medium text-foreground dark:text-zinc-200">Opportunity</span> —{" "}
+                  <Link
+                    href={`/app/sales/opportunities/${workspaceJob.opportunityId}`}
+                    className="text-primary hover:underline dark:text-blue-400"
+                  >
+                    Open pipeline record
+                  </Link>
                 </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+              ) : null}
+              <p>
+                <span className="font-medium text-foreground dark:text-zinc-200">Required progress</span> —{" "}
+                <span className="tabular-nums">
+                  {progress.requiredComplete}/{progress.requiredTotal}
+                </span>
+              </p>
+              <p>
+                <span className="font-medium text-foreground dark:text-zinc-200">Tasks</span> —{" "}
+                <span className="tabular-nums">{progress.totalTasks}</span>
+              </p>
+              {progress.byStatus.BLOCKED > 0 ? (
+                <p className="text-amber-800 dark:text-amber-400/90">
+                  <span className="font-medium">Blocked</span> — {progress.byStatus.BLOCKED}
+                </p>
+              ) : null}
+            </div>
+            <div className="border-t border-border pt-3 dark:border-zinc-800/50">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-primary dark:text-blue-400/90">Focus</p>
+              <p className="mt-1 text-[11px] leading-snug text-muted-foreground dark:text-zinc-400">
+                {progress.byStatus.BLOCKED > 0
+                  ? `${progress.byStatus.BLOCKED} task(s) blocked — review in the execution plan.`
+                  : progress.requiredComplete < progress.requiredTotal
+                    ? `${progress.requiredTotal - progress.requiredComplete} required task(s) not complete.`
+                    : workspaceJob.status === JobStatus.ACTIVE
+                      ? "Monitor scheduled work and task execution on the left."
+                      : "This job is not active for field task updates."}
+              </p>
+            </div>
+          </WorkspaceSummaryPanel>
+        </div>
+      </div>
+    </AppWorkspaceCanvas>
   );
 }

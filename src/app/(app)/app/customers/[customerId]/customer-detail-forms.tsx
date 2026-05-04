@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo } from "react";
+import { useActionState, useMemo, useState } from "react";
 import {
   CustomerContactType,
   CustomerKind,
@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FieldError } from "@/components/customers/customer-area";
+import { workspaceInputClass, workspaceSelectClass, workspaceTextareaClass } from "@/components/workspace/workspace-form-controls";
 import { formatContactType, formatCustomerKind, formatCustomerStatus } from "@/lib/format-enums";
 import { cn } from "@/lib/utils";
 
@@ -47,9 +48,9 @@ export function CustomerProfileForm(props: {
   );
 
   return (
-    <form action={action} className="space-y-5">
+    <form action={action} className="min-w-0 space-y-5">
       <input type="hidden" name="customerId" value={props.customerId} />
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2">
         <div className="space-y-2 sm:col-span-2">
           <Label htmlFor="cd-displayName" className="text-xs font-medium text-muted-foreground">
             Display name
@@ -62,7 +63,8 @@ export function CustomerProfileForm(props: {
             defaultValue={defaults.displayName}
             aria-invalid={Boolean(state && !state.ok && state.fieldErrors?.displayName)}
             className={cn(
-              "rounded-md border-border/80 bg-background/50",
+              workspaceInputClass(),
+              "min-w-0",
               state && !state.ok && state.fieldErrors?.displayName && "border-destructive ring-1 ring-destructive/30",
             )}
           />
@@ -76,10 +78,7 @@ export function CustomerProfileForm(props: {
             id="cd-kind"
             name="kind"
             defaultValue={defaults.kind}
-            className={cn(
-              "flex h-9 w-full rounded-md border border-input bg-background/50 px-3 text-sm shadow-sm",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-            )}
+            className={cn(workspaceSelectClass(), "h-9 w-full min-w-0")}
           >
             {[CustomerKind.UNKNOWN, CustomerKind.PERSON, CustomerKind.COMPANY].map((k) => (
               <option key={k} value={k}>
@@ -97,7 +96,7 @@ export function CustomerProfileForm(props: {
             id="cd-status"
             name="status"
             defaultValue={defaults.status}
-            className="flex h-9 w-full rounded-md border border-input bg-background/50 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className={cn(workspaceSelectClass(), "h-9 w-full min-w-0")}
           >
             {[CustomerStatus.ACTIVE, CustomerStatus.INACTIVE, CustomerStatus.ARCHIVED].map((s) => (
               <option key={s} value={s}>
@@ -119,7 +118,8 @@ export function CustomerProfileForm(props: {
             rows={4}
             aria-invalid={Boolean(state && !state.ok && state.fieldErrors?.notes)}
             className={cn(
-              "rounded-md border-border/80 bg-background/50",
+              workspaceTextareaClass(),
+              "min-h-[6rem] min-w-0 resize-y",
               state && !state.ok && state.fieldErrors?.notes && "border-destructive ring-1 ring-destructive/30",
             )}
           />
@@ -127,10 +127,12 @@ export function CustomerProfileForm(props: {
         </div>
       </div>
       {state && !state.ok && !state.fieldErrors ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{state.error}</p>
+        <p className="rounded-[6px] border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive dark:border-red-900/45 dark:bg-red-950/25 dark:text-red-300">
+          {state.error}
+        </p>
       ) : null}
       {state?.ok ? <p className="text-xs font-medium text-primary">Saved.</p> : null}
-      <Button type="submit" size="sm" disabled={pending} className="rounded-md font-semibold">
+      <Button type="submit" size="sm" disabled={pending} className="rounded-[5px] font-semibold">
         {pending ? "Saving…" : "Save changes"}
       </Button>
     </form>
@@ -142,7 +144,7 @@ export function ContactAddForm({ customerId }: { customerId: string }) {
   return (
     <form
       action={action}
-      className="grid gap-3 rounded-md border border-dashed border-border/70 bg-muted/10 p-4 sm:grid-cols-2 dark:bg-muted/5"
+      className="grid min-w-0 gap-3 rounded-[6px] border border-dashed border-border/70 bg-muted/10 p-4 sm:grid-cols-2 dark:border-zinc-800/60 dark:bg-zinc-950/20"
     >
       <input type="hidden" name="customerId" value={customerId} />
       <div className="space-y-2">
@@ -153,7 +155,7 @@ export function ContactAddForm({ customerId }: { customerId: string }) {
           id="nc-type"
           name="type"
           defaultValue={CustomerContactType.PHONE}
-          className="flex h-9 w-full rounded-md border border-input bg-background/50 px-3 text-sm shadow-sm"
+          className={cn(workspaceSelectClass(), "h-9 w-full min-w-0")}
         >
           {Object.values(CustomerContactType).map((t) => (
             <option key={t} value={t}>
@@ -166,37 +168,119 @@ export function ContactAddForm({ customerId }: { customerId: string }) {
         <Label htmlFor="nc-value" className="text-xs font-medium text-muted-foreground">
           Value
         </Label>
-        <Input id="nc-value" name="value" required className="rounded-md bg-background/50" placeholder="Email or phone number" />
+        <Input id="nc-value" name="value" required className={cn(workspaceInputClass(), "min-w-0")} placeholder="Email or phone number" />
       </div>
       <div className="space-y-2">
         <Label htmlFor="nc-label" className="text-xs font-medium text-muted-foreground">
           Label
         </Label>
-        <Input id="nc-label" name="label" className="rounded-md bg-background/50" placeholder="Optional" />
+        <Input id="nc-label" name="label" className={cn(workspaceInputClass(), "min-w-0")} placeholder="Optional" />
       </div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <input type="checkbox" name="isPrimary" className="size-3.5 rounded-sm border border-input" />
+          <input type="checkbox" name="isPrimary" className="size-3.5 rounded-[4px] border border-input dark:border-zinc-600" />
           Primary
         </label>
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <input type="checkbox" name="okToEmail" className="size-3.5 rounded-sm border border-input" />
+          <input type="checkbox" name="okToEmail" className="size-3.5 rounded-[4px] border border-input dark:border-zinc-600" />
           OK to email
         </label>
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <input type="checkbox" name="okToSms" className="size-3.5 rounded-sm border border-input" />
+          <input type="checkbox" name="okToSms" className="size-3.5 rounded-[4px] border border-input dark:border-zinc-600" />
           OK to SMS
         </label>
       </div>
       <div className="sm:col-span-2">
         {state && !state.ok ? (
-          <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{state.error}</p>
+          <p className="rounded-[6px] border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive dark:border-red-900/45 dark:bg-red-950/25 dark:text-red-300">
+            {state.error}
+          </p>
         ) : null}
-        <Button type="submit" size="sm" disabled={pending} className="mt-3 rounded-md font-semibold">
+        <Button type="submit" size="sm" disabled={pending} className="mt-3 rounded-[5px] font-semibold">
           {pending ? "Adding…" : "Add contact"}
         </Button>
       </div>
     </form>
+  );
+}
+
+export function ContactAddCollapsible({ customerId }: { customerId: string }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <Button type="button" variant="outline" size="sm" className="rounded-[5px] font-semibold" onClick={() => setOpen(true)}>
+        Add contact method
+      </Button>
+    );
+  }
+  return (
+    <div className="space-y-3 rounded-[6px] border border-border bg-muted/20 p-3 dark:border-zinc-800/60 dark:bg-zinc-950/25">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">New contact</p>
+        <Button type="button" variant="ghost" size="sm" className="h-7 rounded-[5px] text-[11px]" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </div>
+      <ContactAddForm customerId={customerId} />
+    </div>
+  );
+}
+
+export function CustomerProfileWorkspaceSection(props: {
+  customerId: string;
+  displayName: string;
+  kind: CustomerKind;
+  status: CustomerStatus;
+  notes: string | null;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [formKey, setFormKey] = useState(0);
+  const notesPreview = (props.notes ?? "").trim();
+  const clipped = notesPreview.length > 160 ? `${notesPreview.slice(0, 157)}…` : notesPreview;
+  if (!editing) {
+    return (
+      <div className="rounded-[6px] border border-border bg-card/30 p-4 dark:border-zinc-800/60 dark:bg-zinc-950/30">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-2">
+            <p className="text-sm font-semibold text-foreground">{props.displayName}</p>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+              <span>{formatCustomerKind(props.kind)}</span>
+              <span className="text-border dark:text-zinc-700" aria-hidden>
+                ·
+              </span>
+              <span>{formatCustomerStatus(props.status)}</span>
+            </div>
+            {clipped ? (
+              <p className="text-xs leading-relaxed text-muted-foreground">{clipped}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">No internal notes yet.</p>
+            )}
+          </div>
+          <Button type="button" size="sm" className="shrink-0 rounded-[5px] font-semibold" onClick={() => setEditing(true)}>
+            Edit profile
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 rounded-[5px] text-[11px] text-muted-foreground"
+          onClick={() => {
+            setEditing(false);
+            setFormKey((k) => k + 1);
+          }}
+        >
+          Collapse editor
+        </Button>
+      </div>
+      <CustomerProfileForm key={formKey} {...props} />
+    </div>
   );
 }
 
@@ -207,20 +291,20 @@ export function ContactEditForm({ customerId, c }: { customerId: string; c: Cont
     <form
       action={action}
       className={cn(
-        "space-y-3 rounded-md border border-border/80 p-3.5",
+        "min-w-0 space-y-3 rounded-[6px] border border-border/80 p-3.5 dark:border-zinc-800/60",
         archived ? "border-dashed opacity-60" : "bg-card/25 dark:bg-card/15",
       )}
     >
       <input type="hidden" name="customerId" value={customerId} />
       <input type="hidden" name="contactId" value={c.id} />
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid min-w-0 gap-3 sm:grid-cols-3">
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Type</Label>
           <select
             name="type"
             defaultValue={c.type}
             disabled={archived}
-            className="flex h-9 w-full rounded-md border border-input bg-background/50 px-2 text-sm"
+            className={cn(workspaceSelectClass(), "h-9 w-full min-w-0")}
           >
             {Object.values(CustomerContactType).map((t) => (
               <option key={t} value={t}>
@@ -231,11 +315,11 @@ export function ContactEditForm({ customerId, c }: { customerId: string; c: Cont
         </div>
         <div className="space-y-1 sm:col-span-2">
           <Label className="text-xs text-muted-foreground">Value</Label>
-          <Input name="value" required defaultValue={c.value} disabled={archived} className="rounded-md bg-background/50" />
+          <Input name="value" required defaultValue={c.value} disabled={archived} className={cn(workspaceInputClass(), "min-w-0")} />
         </div>
         <div className="space-y-1 sm:col-span-3">
           <Label className="text-xs text-muted-foreground">Label</Label>
-          <Input name="label" defaultValue={c.label ?? ""} disabled={archived} className="rounded-md bg-background/50" />
+          <Input name="label" defaultValue={c.label ?? ""} disabled={archived} className={cn(workspaceInputClass(), "min-w-0")} />
         </div>
       </div>
       <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
@@ -245,7 +329,7 @@ export function ContactEditForm({ customerId, c }: { customerId: string; c: Cont
             name="isPrimary"
             defaultChecked={c.isPrimary}
             disabled={archived}
-            className="size-3.5 rounded-sm border border-input"
+            className="size-3.5 rounded-[4px] border border-input dark:border-zinc-600"
           />
           Primary
         </label>
@@ -255,7 +339,7 @@ export function ContactEditForm({ customerId, c }: { customerId: string; c: Cont
             name="okToEmail"
             defaultChecked={c.okToEmail}
             disabled={archived}
-            className="size-3.5 rounded-sm border border-input"
+            className="size-3.5 rounded-[4px] border border-input dark:border-zinc-600"
           />
           OK to email
         </label>
@@ -265,21 +349,91 @@ export function ContactEditForm({ customerId, c }: { customerId: string; c: Cont
             name="okToSms"
             defaultChecked={c.okToSms}
             disabled={archived}
-            className="size-3.5 rounded-sm border border-input"
+            className="size-3.5 rounded-[4px] border border-input dark:border-zinc-600"
           />
           OK to SMS
         </label>
         <label className="flex items-center gap-2">
-          <input type="checkbox" name="archived" defaultChecked={archived} className="size-3.5 rounded-sm border border-input" />
+          <input type="checkbox" name="archived" defaultChecked={archived} className="size-3.5 rounded-[4px] border border-input dark:border-zinc-600" />
           Archived
         </label>
       </div>
       {state && !state.ok ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">{state.error}</p>
+        <p className="rounded-[6px] border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs font-medium text-destructive dark:border-red-900/45 dark:bg-red-950/25 dark:text-red-300">
+          {state.error}
+        </p>
       ) : null}
-      <Button type="submit" size="sm" variant="secondary" disabled={pending} className="rounded-md font-semibold">
+      <Button type="submit" size="sm" variant="secondary" disabled={pending} className="rounded-[5px] font-semibold">
         {pending ? "Updating…" : "Update contact"}
       </Button>
     </form>
+  );
+}
+
+/** Compact operational row; expands to the full edit form on demand. */
+export function ContactMethodWorkspaceRow({ customerId, c }: { customerId: string; c: Contact }) {
+  const [open, setOpen] = useState(false);
+  const archived = Boolean(c.archivedAt);
+  return (
+    <li className={cn("min-w-0", archived && "opacity-[0.85]")}>
+      {!open ? (
+        <div className="flex min-w-0 flex-col gap-2 p-3.5 sm:flex-row sm:items-start sm:justify-between sm:p-4">
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="truncate text-sm font-medium text-foreground dark:text-zinc-100">{c.value}</p>
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground dark:text-zinc-500">
+              <span>{formatContactType(c.type)}</span>
+              {c.label ? (
+                <>
+                  <span className="text-border dark:text-zinc-700" aria-hidden>
+                    ·
+                  </span>
+                  <span className="truncate">{c.label}</span>
+                </>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              {c.isPrimary ? (
+                <span className="rounded-[4px] border border-primary/35 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary dark:border-blue-500/35 dark:bg-blue-500/10 dark:text-blue-200">
+                  Primary
+                </span>
+              ) : null}
+              {archived ? (
+                <span className="rounded-[4px] border border-border bg-muted/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground dark:border-zinc-700 dark:bg-zinc-900/60">
+                  Archived
+                </span>
+              ) : null}
+              {c.okToEmail ? (
+                <span className="rounded-[4px] border border-border/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground dark:border-zinc-700">
+                  Email OK
+                </span>
+              ) : null}
+              {c.okToSms ? (
+                <span className="rounded-[4px] border border-border/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground dark:border-zinc-700">
+                  SMS OK
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="shrink-0 rounded-[5px] font-semibold"
+            onClick={() => setOpen(true)}
+          >
+            Edit
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3 p-3 sm:p-4">
+          <div className="flex justify-end">
+            <Button type="button" variant="ghost" size="sm" className="h-7 rounded-[5px] text-[11px]" onClick={() => setOpen(false)}>
+              Close editor
+            </Button>
+          </div>
+          <ContactEditForm customerId={customerId} c={c} />
+        </div>
+      )}
+    </li>
   );
 }

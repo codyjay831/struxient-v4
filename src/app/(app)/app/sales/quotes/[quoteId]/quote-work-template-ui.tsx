@@ -28,6 +28,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  workspaceDialogContentClass,
+  workspaceInputClass,
+  workspaceTextareaClass,
+} from "@/components/workspace/workspace-form-controls";
+import { workspaceDashedEmptyWellClass } from "@/components/workspace/workspace-surface-tokens";
 import { cn } from "@/lib/utils";
 
 export type WorkTemplateListItemDTO = {
@@ -49,7 +55,7 @@ export type WorkTemplatesBundleDTO = {
 function ActionError({ state }: { state: TemplateUiActionState | undefined }) {
   if (!state || state.ok) return null;
   return (
-    <p className="text-sm text-destructive" role="alert">
+    <p className="text-sm font-medium text-destructive dark:text-red-400" role="alert">
       {state.error}
     </p>
   );
@@ -109,15 +115,17 @@ export function WorkTemplateInsertDialog(props: {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto border-border bg-background text-foreground">
+      <DialogContent
+        className={cn(workspaceDialogContentClass(), "max-h-[85vh] max-w-lg min-w-0 overflow-y-auto overflow-x-hidden")}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription className="text-muted-foreground">
+          <DialogDescription className="text-muted-foreground dark:text-zinc-500">
             Adds an editable copy to this quote. The template stays unchanged. This quote owns the inserted work.
           </DialogDescription>
         </DialogHeader>
         {items.length === 0 ? (
-          <div className="rounded-sm border border-dashed border-border bg-muted/40 px-4 py-8">
+          <div className={workspaceDashedEmptyWellClass()}>
             <p className="text-sm font-medium text-foreground">{emptyTitle}</p>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{emptyBody}</p>
           </div>
@@ -128,7 +136,7 @@ export function WorkTemplateInsertDialog(props: {
                 <li
                   key={t.id}
                   className={cn(
-                    "rounded-sm border border-border bg-muted/30 p-3 transition-colors",
+                    "rounded-[6px] border border-border bg-muted/30 p-3 transition-colors dark:border-zinc-800/60 dark:bg-zinc-950/25",
                     selectedId === t.id ? "border-primary/60 ring-1 ring-primary/30" : "hover:border-border/80",
                   )}
                 >
@@ -166,10 +174,10 @@ export function WorkTemplateInsertDialog(props: {
                 <input type="hidden" name="templateId" value={selectedId ?? ""} />
                 <ActionError state={lineState} />
                 <DialogFooter className="gap-2 sm:justify-between">
-                  <Button type="button" variant="outline" size="sm" className="rounded-sm" onClick={() => setOpen(false)}>
+                  <Button type="button" variant="outline" size="sm" className="rounded-[5px] font-semibold" onClick={() => setOpen(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" size="sm" className="rounded-sm" disabled={!selectedId}>
+                  <Button type="submit" size="sm" className="rounded-[5px] font-semibold" disabled={!selectedId}>
                     Insert selected
                   </Button>
                 </DialogFooter>
@@ -181,10 +189,10 @@ export function WorkTemplateInsertDialog(props: {
                 <input type="hidden" name="templateId" value={selectedId ?? ""} />
                 <ActionError state={stageState} />
                 <DialogFooter className="gap-2 sm:justify-between">
-                  <Button type="button" variant="outline" size="sm" className="rounded-sm" onClick={() => setOpen(false)}>
+                  <Button type="button" variant="outline" size="sm" className="rounded-[5px] font-semibold" onClick={() => setOpen(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" size="sm" className="rounded-sm" disabled={!selectedId}>
+                  <Button type="submit" size="sm" className="rounded-[5px] font-semibold" disabled={!selectedId}>
                     Insert selected
                   </Button>
                 </DialogFooter>
@@ -196,10 +204,10 @@ export function WorkTemplateInsertDialog(props: {
                 <input type="hidden" name="templateId" value={selectedId ?? ""} />
                 <ActionError state={taskState} />
                 <DialogFooter className="gap-2 sm:justify-between">
-                  <Button type="button" variant="outline" size="sm" className="rounded-sm" onClick={() => setOpen(false)}>
+                  <Button type="button" variant="outline" size="sm" className="rounded-[5px] font-semibold" onClick={() => setOpen(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" size="sm" className="rounded-sm" disabled={!selectedId}>
+                  <Button type="submit" size="sm" className="rounded-[5px] font-semibold" disabled={!selectedId}>
                     Insert selected
                   </Button>
                 </DialogFooter>
@@ -210,7 +218,7 @@ export function WorkTemplateInsertDialog(props: {
         )}
         {!items.length ? (
           <DialogFooter>
-            <Button type="button" variant="outline" size="sm" className="rounded-sm" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" size="sm" className="rounded-[5px] font-semibold" onClick={() => setOpen(false)}>
               Close
             </Button>
           </DialogFooter>
@@ -251,10 +259,10 @@ export function SaveWorkTemplateDialog(props: {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="border-border bg-background text-foreground">
+      <DialogContent className={cn(workspaceDialogContentClass(), "min-w-0 max-w-lg overflow-x-hidden")}>
         <DialogHeader>
           <DialogTitle>Save as work template</DialogTitle>
-          <DialogDescription className="space-y-2 text-muted-foreground">
+          <DialogDescription className="space-y-2 text-muted-foreground dark:text-zinc-500">
             <span className="block">
               Saves this as a reusable starting point. Existing quotes will not be linked to this template. Editing this
               quote later will not change the template.
@@ -271,25 +279,30 @@ export function SaveWorkTemplateDialog(props: {
                 id="tmpl-name-line"
                 name="name"
                 required
-                className="rounded-sm"
+                className={cn(workspaceInputClass(), "min-w-0")}
                 placeholder="e.g. Standard EV charger install"
                 defaultValue={defaultName ?? ""}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="tmpl-desc-line">Description (optional)</Label>
-              <Textarea id="tmpl-desc-line" name="description" rows={2} className="rounded-sm" />
+              <Textarea
+                id="tmpl-desc-line"
+                name="description"
+                rows={2}
+                className={cn(workspaceTextareaClass(), "min-h-[4rem] min-w-0 resize-y")}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="tmpl-tags-line">Tags (optional, comma-separated)</Label>
-              <Input id="tmpl-tags-line" name="tags" className="rounded-sm" placeholder="electrical, ev" />
+              <Input id="tmpl-tags-line" name="tags" className={cn(workspaceInputClass(), "min-w-0")} placeholder="electrical, ev" />
             </div>
             <ActionError state={lineState} />
             <DialogFooter>
-              <Button type="button" variant="outline" size="sm" className="rounded-sm" onClick={() => setOpen(false)}>
+              <Button type="button" variant="outline" size="sm" className="rounded-[5px] font-semibold" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" className="rounded-sm">
+              <Button type="submit" size="sm" className="rounded-[5px] font-semibold">
                 Save template
               </Button>
             </DialogFooter>
@@ -305,24 +318,29 @@ export function SaveWorkTemplateDialog(props: {
                 id="tmpl-name-stage"
                 name="name"
                 required
-                className="rounded-sm"
+                className={cn(workspaceInputClass(), "min-w-0")}
                 defaultValue={defaultName ?? ""}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="tmpl-desc-stage">Description (optional)</Label>
-              <Textarea id="tmpl-desc-stage" name="description" rows={2} className="rounded-sm" />
+              <Textarea
+                id="tmpl-desc-stage"
+                name="description"
+                rows={2}
+                className={cn(workspaceTextareaClass(), "min-h-[4rem] min-w-0 resize-y")}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="tmpl-tags-stage">Tags (optional)</Label>
-              <Input id="tmpl-tags-stage" name="tags" className="rounded-sm" />
+              <Input id="tmpl-tags-stage" name="tags" className={cn(workspaceInputClass(), "min-w-0")} />
             </div>
             <ActionError state={stageState} />
             <DialogFooter>
-              <Button type="button" variant="outline" size="sm" className="rounded-sm" onClick={() => setOpen(false)}>
+              <Button type="button" variant="outline" size="sm" className="rounded-[5px] font-semibold" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" className="rounded-sm">
+              <Button type="submit" size="sm" className="rounded-[5px] font-semibold">
                 Save template
               </Button>
             </DialogFooter>
@@ -338,24 +356,29 @@ export function SaveWorkTemplateDialog(props: {
                 id="tmpl-name-task"
                 name="name"
                 required
-                className="rounded-sm"
+                className={cn(workspaceInputClass(), "min-w-0")}
                 defaultValue={defaultName ?? ""}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="tmpl-desc-task">Description (optional)</Label>
-              <Textarea id="tmpl-desc-task" name="description" rows={2} className="rounded-sm" />
+              <Textarea
+                id="tmpl-desc-task"
+                name="description"
+                rows={2}
+                className={cn(workspaceTextareaClass(), "min-h-[4rem] min-w-0 resize-y")}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="tmpl-tags-task">Tags (optional)</Label>
-              <Input id="tmpl-tags-task" name="tags" className="rounded-sm" />
+              <Input id="tmpl-tags-task" name="tags" className={cn(workspaceInputClass(), "min-w-0")} />
             </div>
             <ActionError state={taskState} />
             <DialogFooter>
-              <Button type="button" variant="outline" size="sm" className="rounded-sm" onClick={() => setOpen(false)}>
+              <Button type="button" variant="outline" size="sm" className="rounded-[5px] font-semibold" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" className="rounded-sm">
+              <Button type="submit" size="sm" className="rounded-[5px] font-semibold">
                 Save template
               </Button>
             </DialogFooter>
