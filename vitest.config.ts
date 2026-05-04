@@ -9,6 +9,7 @@ export default defineConfig({
     fileParallelism: false,
     include: [
       "src/**/*.integration.test.ts",
+      "src/server/email/**/*.test.ts",
       "src/server/phase2/__tests__/*.test.ts",
       "src/server/phase6/work-station-feed.test.ts",
       "src/server/phase7/__tests__/*.integration.test.ts",

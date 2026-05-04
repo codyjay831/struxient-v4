@@ -2,13 +2,8 @@
 
 import { JobStatus } from "@prisma/client";
 import { useActionState, useEffect, useState } from "react";
-import {
-  cancelJob,
-  completeJob,
-  pauseJob,
-  resumeJob,
-  type JobLifecycleActionResult,
-} from "@/app/(app)/app/jobs/[jobId]/actions";
+import type { JobLifecycleActionResult } from "@/app/(app)/app/jobs/[jobId]/action-types";
+import { cancelJob, completeJob, pauseJob, resumeJob } from "@/app/(app)/app/jobs/[jobId]/actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

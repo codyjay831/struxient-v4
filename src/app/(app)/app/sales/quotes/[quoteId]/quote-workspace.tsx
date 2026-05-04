@@ -29,6 +29,7 @@ import {
   markQuoteAccepted,
   markQuoteReadyToSend,
   markQuoteSent,
+  sendQuoteToCustomerByEmail,
   removeQuoteAssumption,
   removeQuoteLineExecutionStage,
   updateQuote,
@@ -340,6 +341,15 @@ export type QuoteWorkspaceProps = {
     canManageJobEvidence?: boolean;
     evidencePromotion?: StaffEvidencePromotionContext;
   };
+  /** Infrastructure gate for “Send quote to customer” (not recipient validation). */
+  emailSend: { canAttemptSend: boolean; blockedReason: string | null };
+  /** Open email/portal failure after a partial send (quote may already be SENT). */
+  emailDeliveryFailure: {
+    summary: string;
+    errorSummary: string | null;
+    recipientEmail: string | null;
+  } | null;
+  lastProposalEmailRecipient: string | null;
   defaultExpandedSection: QuoteWorkspaceDefaultSection;
 };
 
@@ -356,6 +366,9 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
     canManageWorkTemplates,
     customerPortal,
     customerPortalSubmissions,
+    emailSend,
+    emailDeliveryFailure,
+    lastProposalEmailRecipient,
     defaultExpandedSection,
   } = props;
   /** True after send through activation: quote structure and commercial snapshot are frozen here. */
@@ -367,14 +380,17 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
   const [proposalState, proposalAction] = useActionState(updateQuoteDraftProposal, undefined);
   const [readyState, readyAction] = useActionState(markQuoteReadyToSend, undefined);
   const [sentState, sentAction] = useActionState(markQuoteSent, undefined);
+  const [emailSendState, emailSendAction] = useActionState(sendQuoteToCustomerByEmail, undefined);
   const [acceptState, acceptAction] = useActionState(markQuoteAccepted, undefined);
   const [activateState, activateAction] = useActionState(activateAcceptedQuoteAsJob, undefined);
 
   const headline = sendBlocked
     ? "Send blocked — resolve checklist blockers"
-    : warningCount > 0
-      ? "Ready to proceed with warnings — review checklist"
-      : "Send readiness satisfied";
+    : !emailSend.canAttemptSend
+      ? "Send checklist passed — email delivery not configured"
+      : warningCount > 0
+        ? "Ready to proceed with warnings — review checklist"
+        : "Send checklist passed";
 
   const activeLines = quote.lineItems.filter((l) => l.lineMode !== QuoteLineMode.REMOVED);
   let stageCount = 0;
@@ -390,9 +406,11 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
   const firstBlocker = blockers[0];
   const nextActionLine = firstBlocker
     ? `Next: ${firstBlocker.label} — ${clipText(firstBlocker.explanation, 120)}`
-    : warningCount > 0
-      ? `Next: Review ${warningCount} readiness warning(s) before send.`
-      : "Next: Review proposal preview and line totals, then mark ready to send.";
+    : !emailSend.canAttemptSend
+      ? emailSend.blockedReason ?? "Configure transactional email and public app URL to send from Struxient."
+      : warningCount > 0
+        ? `Next: Review ${warningCount} readiness warning(s), then send by email or record sent manually.`
+        : "Next: Preview the customer proposal, then send a secure link by email or record sent manually.";
 
   const linePricingIssues = readiness.some(
     (i) => i.key === "line_price_fixed" && i.status === "FAIL",
@@ -442,6 +460,13 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
     />
   );
 
+  const sendEmailDisabled = sendBlocked || !emailSend.canAttemptSend;
+  const sendEmailTitle = sendBlocked
+    ? "Resolve send blockers before sending."
+    : !emailSend.canAttemptSend
+      ? (emailSend.blockedReason ?? "Email send is not available in this environment.")
+      : undefined;
+
   const primaryActions = !isSent ? (
     <>
       <form action={readyAction} className="inline">
@@ -455,24 +480,55 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
           Mark ready to send
         </Button>
       </form>
+      <form action={emailSendAction} className="inline">
+        <input type="hidden" name="quoteId" value={quote.id} />
+        <Button
+          type="submit"
+          disabled={sendEmailDisabled}
+          title={sendEmailTitle}
+          className="h-8 rounded-[5px] bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+        >
+          Send quote to customer
+        </Button>
+      </form>
       <form action={sentAction} className="inline">
         <input type="hidden" name="quoteId" value={quote.id} />
         <Button
           type="submit"
+          variant="outline"
           disabled={sendBlocked}
-          className="h-8 rounded-[5px] bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+          className="h-8 rounded-[5px] border border-border bg-background text-xs font-medium hover:bg-muted/60 dark:border-zinc-600/60 dark:bg-zinc-950 dark:hover:bg-zinc-900 disabled:opacity-40"
         >
-          Mark sent
+          Record sent manually
         </Button>
       </form>
     </>
   ) : null;
 
+  const sendExplainer = !isSent
+    ? "Sends a secure proposal link by email and freezes the customer proposal snapshot. Use “Record sent manually” only if the customer already received the proposal outside Struxient."
+    : null;
+
   const sentLifecycle = isSent ? (
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-      <p className="text-[11px] text-muted-foreground dark:text-zinc-500">
-        Sent {quote.sentAt ? new Date(quote.sentAt).toLocaleString() : ""}. Scope frozen — internal notes in Basics.
-      </p>
+      <div className="flex min-w-0 flex-col gap-1 text-[11px] text-muted-foreground dark:text-zinc-500">
+        <p>
+          Finalized {quote.sentAt ? new Date(quote.sentAt).toLocaleString() : ""}. Proposal scope is frozen — internal
+          notes stay in Basics.
+        </p>
+        {lastProposalEmailRecipient ? (
+          <p className="text-foreground/90 dark:text-zinc-300">
+            Email delivery: <span className="font-medium">{lastProposalEmailRecipient}</span>
+          </p>
+        ) : null}
+        {emailDeliveryFailure ? (
+          <p className="font-medium text-destructive dark:text-red-400" role="alert">
+            Email delivery needs attention: {emailDeliveryFailure.errorSummary ?? emailDeliveryFailure.summary}
+            {emailDeliveryFailure.recipientEmail ? ` (${emailDeliveryFailure.recipientEmail})` : null}. Use Customer
+            portal below to copy the secure link.
+          </p>
+        ) : null}
+      </div>
       {quote.status === QuoteStatus.SENT ? (
         <form action={acceptAction} className="flex flex-wrap items-center gap-2">
           <input type="hidden" name="quoteId" value={quote.id} />
@@ -500,6 +556,7 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
   const actionErrors = (
     <div className="flex flex-col gap-1">
       <ActionError state={readyState} />
+      <ActionError state={emailSendState} />
       <ActionError state={sentState} />
       <ActionError state={acceptState} />
       <ActionError state={activateState} />
@@ -524,6 +581,7 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
         primaryActions={primaryActions}
         sentLifecycle={sentLifecycle}
         actionErrors={actionErrors}
+        sendExplainer={sendExplainer}
       />
       <div className="mt-4 min-w-0 max-w-full lg:hidden">{intelPanel}</div>
       <QuoteWorkbenchMobileSteps active={step} onSelect={setStep} />
@@ -689,7 +747,11 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
             <QuoteWorkbenchPanelFrame
               kicker="Customer-facing"
               title="Proposal content"
-              subtitle="These fields shape the internal customer preview — not a live portal."
+              subtitle={
+                isSent
+                  ? "Frozen customer proposal snapshot."
+                  : "Preview what the customer will receive before sending. Sending freezes this customer-safe proposal snapshot."
+              }
             >
               {!isSent ? (
                 <form action={proposalAction} className="grid max-w-2xl gap-3">
@@ -729,7 +791,7 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
               <AssumptionsSection quoteId={quote.id} lines={quote.lineItems} assumptions={quote.assumptions} isSent={isSent} />
               <div className="space-y-2 rounded-[5px] border border-primary/20 bg-primary/[0.06] p-4 dark:border-blue-500/25 dark:bg-blue-950/20">
                 <h3 className="text-[10px] font-semibold uppercase tracking-wider text-primary dark:text-blue-300/90">
-                  Internal preview
+                  {isSent ? "Frozen customer proposal" : "Customer proposal preview"}
                 </h3>
                 {snapshotIntegrityError ? (
                   <div
@@ -788,7 +850,7 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
             <QuoteWorkbenchPanelFrame
               kicker="Server checklist"
               title="Readiness & send"
-              subtitle="Computed on the server. Blockers disable Mark ready and Mark sent."
+              subtitle="Computed on the server. Blockers disable send actions. Email send also requires transactional email configuration and a public app URL."
             >
               {firstBlocker ? (
                 <div className="mb-4 rounded-[5px] border border-destructive/30 bg-destructive/5 px-3 py-2.5 dark:border-red-500/30 dark:bg-red-950/25">
@@ -811,19 +873,34 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
                       Mark ready to send
                     </Button>
                   </form>
-                  <form action={sentAction}>
+                  <form action={emailSendAction}>
                     <input type="hidden" name="quoteId" value={quote.id} />
                     <Button
                       type="submit"
                       size="sm"
-                      disabled={sendBlocked}
+                      disabled={sendEmailDisabled}
+                      title={sendEmailTitle}
                       className="h-8 rounded-[5px] bg-primary text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
                     >
-                      Mark sent
+                      Send quote to customer
+                    </Button>
+                  </form>
+                  <form action={sentAction}>
+                    <input type="hidden" name="quoteId" value={quote.id} />
+                    <Button
+                      type="submit"
+                      variant="outline"
+                      size="sm"
+                      disabled={sendBlocked}
+                      className="h-8 rounded-[5px] border border-border bg-background text-xs font-medium hover:bg-muted/60 dark:border-zinc-600/60 dark:bg-zinc-950 dark:hover:bg-zinc-900 disabled:opacity-40"
+                    >
+                      Record sent manually
                     </Button>
                   </form>
                   {sendBlocked ? (
                     <span className="text-[11px] text-muted-foreground dark:text-zinc-500">Disabled until checklist passes.</span>
+                  ) : !emailSend.canAttemptSend ? (
+                    <span className="max-w-md text-[11px] text-muted-foreground dark:text-zinc-500">{emailSend.blockedReason}</span>
                   ) : null}
                 </div>
               ) : null}
@@ -860,13 +937,18 @@ export function QuoteWorkspace(props: QuoteWorkspaceProps) {
 
       <div className="mt-10 space-y-6 border-t border-border dark:border-zinc-800/40 pt-8">
         {customerPortal.showSection ? (
-          <StaffPortalLinkPanel
-            quoteId={quote.id}
-            hasActiveToken={customerPortal.hasActiveToken}
-            lastViewedAt={customerPortal.lastViewedAt}
-            canCreateLink={customerPortal.canCreateLink}
-            canRevokeRegenerateLink={customerPortal.canRevokeRegenerateLink}
-          />
+          <div className="space-y-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground dark:text-zinc-500">
+              Customer sharing
+            </h2>
+            <StaffPortalLinkPanel
+              quoteId={quote.id}
+              hasActiveToken={customerPortal.hasActiveToken}
+              lastViewedAt={customerPortal.lastViewedAt}
+              canCreateLink={customerPortal.canCreateLink}
+              canRevokeRegenerateLink={customerPortal.canRevokeRegenerateLink}
+            />
+          </div>
         ) : null}
         {customerPortalSubmissions?.canView ? (
           <StaffCustomerPortalSubmissionsPanel

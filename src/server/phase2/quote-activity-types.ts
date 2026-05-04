@@ -18,6 +18,10 @@ export const QuoteActivityEventType = {
   QUOTE_ASSUMPTION_REMOVED: "QUOTE_ASSUMPTION_REMOVED",
   QUOTE_PREVIEWED: "QUOTE_PREVIEWED",
   QUOTE_MARKED_READY: "QUOTE_MARKED_READY",
+  /** Proposal finalized and transactional email accepted by provider (payload includes recipient + provider ids). */
+  QUOTE_EMAIL_DELIVERY_SENT: "QUOTE_EMAIL_DELIVERY_SENT",
+  /** Email or portal-link step failed after quote was already marked SENT (payload includes sanitized error). */
+  QUOTE_EMAIL_DELIVERY_FAILED: "QUOTE_EMAIL_DELIVERY_FAILED",
   QUOTE_SENT: "QUOTE_SENT",
   QUOTE_ACCEPTED: "QUOTE_ACCEPTED",
   QUOTE_ACTIVATED: "QUOTE_ACTIVATED",

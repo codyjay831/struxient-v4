@@ -2,7 +2,8 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { JobStatus, JobTaskStatus } from "@prisma/client";
-import { scheduleJobTaskAction, type ScheduledWorkActionResult } from "@/app/(app)/app/jobs/[jobId]/actions";
+import type { ScheduledWorkActionResult } from "@/app/(app)/app/jobs/[jobId]/action-types";
+import { scheduleJobTaskAction } from "@/app/(app)/app/jobs/[jobId]/actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

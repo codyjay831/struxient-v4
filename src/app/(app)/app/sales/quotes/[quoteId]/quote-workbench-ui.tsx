@@ -87,6 +87,8 @@ type CommandBarProps = {
   primaryActions: ReactNode;
   sentLifecycle: ReactNode;
   actionErrors: ReactNode;
+  /** Short line under send actions (e.g. email + snapshot explanation). */
+  sendExplainer?: string | null;
 };
 
 export function QuoteWorkbenchCommandBar({
@@ -105,6 +107,7 @@ export function QuoteWorkbenchCommandBar({
   primaryActions,
   sentLifecycle,
   actionErrors,
+  sendExplainer,
 }: CommandBarProps) {
   const readinessClass =
     readinessTone === "block"
@@ -161,7 +164,12 @@ export function QuoteWorkbenchCommandBar({
       </div>
       <div className="mt-3 flex min-w-0 flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between dark:border-zinc-800/40">
         {!isSent ? (
-          <div className="flex flex-wrap items-center gap-2">{primaryActions}</div>
+          <div className="flex min-w-0 flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">{primaryActions}</div>
+            {sendExplainer ? (
+              <p className="max-w-xl text-[10px] leading-relaxed text-muted-foreground dark:text-zinc-500">{sendExplainer}</p>
+            ) : null}
+          </div>
         ) : (
           <div className="min-w-0 flex-1">{sentLifecycle}</div>
         )}

@@ -3,6 +3,7 @@ import {
   type Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { QuoteActivityEventType } from "@/server/phase2/quote-activity-types";
 
 const ACTIVE_DRAFT_STATUSES: QuoteStatus[] = [
   QuoteStatus.DRAFT,
@@ -105,6 +106,51 @@ export async function listQuoteActivity(organizationId: string, quoteId: string)
     orderBy: { createdAt: "desc" },
     take: 200,
   });
+}
+
+/** If the latest email delivery failure was not followed by a successful delivery event, surface it in the UI. */
+export async function getQuoteLatestOpenEmailDeliveryFailure(organizationId: string, quoteId: string) {
+  const failed = await prisma.quoteActivityEvent.findFirst({
+    where: {
+      organizationId,
+      quoteId,
+      eventType: QuoteActivityEventType.QUOTE_EMAIL_DELIVERY_FAILED,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!failed) return null;
+  const recovered = await prisma.quoteActivityEvent.findFirst({
+    where: {
+      organizationId,
+      quoteId,
+      eventType: QuoteActivityEventType.QUOTE_EMAIL_DELIVERY_SENT,
+      createdAt: { gt: failed.createdAt },
+    },
+    select: { id: true },
+  });
+  if (recovered) return null;
+  const payload = failed.payload as { errorSummary?: string; recipientEmail?: string } | null;
+  return {
+    summary: failed.summary,
+    recipientEmail: typeof payload?.recipientEmail === "string" ? payload.recipientEmail : null,
+    errorSummary: typeof payload?.errorSummary === "string" ? payload.errorSummary : null,
+    createdAt: failed.createdAt,
+  };
+}
+
+/** Latest successful transactional email delivery row for staff UI ("Sent by email to …"). */
+export async function getQuoteLastProposalEmailRecipient(organizationId: string, quoteId: string): Promise<string | null> {
+  const row = await prisma.quoteActivityEvent.findFirst({
+    where: {
+      organizationId,
+      quoteId,
+      eventType: QuoteActivityEventType.QUOTE_EMAIL_DELIVERY_SENT,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!row) return null;
+  const payload = row.payload as { recipientEmail?: string } | null;
+  return typeof payload?.recipientEmail === "string" ? payload.recipientEmail : null;
 }
 
 /** Readiness evaluation bundle (lighter than full workspace include). */

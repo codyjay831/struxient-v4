@@ -3,7 +3,7 @@
  * Requires DATABASE_URL (e.g. from `.env`) and PostgreSQL.
  */
 import { config } from "dotenv";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import bcrypt from "bcryptjs";
 import {
   CustomerContactType,
@@ -23,6 +23,7 @@ import { prisma } from "@/lib/prisma";
 import type { OrgSessionContext } from "@/server/phase1/org-session";
 import { parseValidatedSentQuoteSnapshot } from "@/server/phase2/customer-preview";
 import { QuoteActivityEventType } from "@/server/phase2/quote-activity-types";
+import * as transactionalEmail from "@/server/email/transactional";
 import {
   quoteMutationAddAssumption,
   quoteMutationAddLineExecutionStage,
@@ -43,6 +44,7 @@ import {
   quoteMutationUpdateTask,
   quoteMutationUpdateTaskStatus,
 } from "@/server/phase2/quote-mutations";
+import { quoteMutationSendQuoteToCustomerByEmail } from "@/server/phase2/quote-send-email-mutation";
 
 config({ path: ".env" });
 
@@ -141,6 +143,7 @@ describe("Phase 2 quote mutations (integration)", () => {
         type: CustomerContactType.EMAIL,
         value: `cust-${suffix}@example.com`,
         isPrimary: true,
+        okToEmail: true,
       },
     });
 
@@ -153,6 +156,7 @@ describe("Phase 2 quote mutations (integration)", () => {
         type: CustomerContactType.EMAIL,
         value: `cust-b-${suffix}@example.com`,
         isPrimary: true,
+        okToEmail: true,
       },
     });
 
@@ -195,6 +199,15 @@ describe("Phase 2 quote mutations (integration)", () => {
       },
     });
     opportunityBId = oppB.id;
+  });
+
+  beforeAll(() => {
+    if (!process.env.STRUXIENT_PUBLIC_APP_URL?.trim()) {
+      process.env.STRUXIENT_PUBLIC_APP_URL = "http://localhost:3000";
+    }
+    if (!process.env.EMAIL_DELIVERY_MODE?.trim()) {
+      process.env.EMAIL_DELIVERY_MODE = "log";
+    }
   });
 
   afterAll(async () => {
@@ -429,6 +442,12 @@ describe("Phase 2 quote mutations (integration)", () => {
 
     const sent = await quoteMutationMarkSent(salesCtxA, fd({ quoteId }));
     expect(sent.ok).toBe(true);
+
+    const sentAct = await prisma.quoteActivityEvent.findFirst({
+      where: { quoteId, eventType: QuoteActivityEventType.QUOTE_SENT },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(sentAct?.payload).toEqual(expect.objectContaining({ recordMethod: "MANUAL_OUTSIDE_STRUXIENT" }));
 
     const row = await prisma.quote.findUniqueOrThrow({ where: { id: quoteId } });
     expect(row.status).toBe(QuoteStatus.SENT);
@@ -847,6 +866,225 @@ describe("Phase 2 quote mutations (integration)", () => {
     expect(row2.customerFacingIntro).toContain("Intro");
     expect(row2.title).toBe("Updated title only");
 
+    await prisma.quote.deleteMany({ where: { opportunityId: opp.id } });
+    await prisma.opportunity.delete({ where: { id: opp.id } });
+  });
+
+  it("quoteMutationSendQuoteToCustomerByEmail: log mode marks SENT, creates portal token, records delivery events", async () => {
+    const opp = await prisma.opportunity.create({
+      data: {
+        organizationId: orgAId,
+        customerId: customerAId,
+        title: `Opp email send ${suffix}`,
+        serviceType: "Remodel",
+        source: "test",
+        status: OpportunityStatus.NEW,
+        priority: OpportunityPriority.NORMAL,
+        serviceAddressTbd: true,
+        scopeIntent: "Scope for email send",
+      },
+    });
+    await prisma.opportunityTask.create({
+      data: {
+        opportunityId: opp.id,
+        title: "Opt",
+        kind: OpportunityTaskKind.INTAKE,
+        status: OpportunityTaskStatus.NOT_READY,
+        isRequired: false,
+      },
+    });
+    const created = await quoteMutationCreateDraftFromOpportunity(salesCtxA, opp.id);
+    expect(created.ok && created.outcome === "created").toBe(true);
+    if (!created.ok || created.outcome !== "created") return;
+    const quoteId = created.quoteId;
+
+    await prisma.quote.update({
+      where: { id: quoteId },
+      data: { customerFacingIntro: "Hello.", internalNotes: "INTERNAL" },
+    });
+
+    const line = await quoteMutationAddLineItem(
+      salesCtxA,
+      fd({
+        quoteId,
+        title: "Line A",
+        customerDescription: "Desc",
+        quantity: "1",
+        unitPriceCents: "100",
+        pricingMode: PricingMode.FIXED_PRICE,
+        lineMode: QuoteLineMode.REQUIRED,
+      }),
+    );
+    expect(line.ok).toBe(true);
+
+    await prisma.quoteAssumption.create({
+      data: {
+        organizationId: orgAId,
+        quoteId,
+        visibility: QuoteAssumptionVisibility.CUSTOMER_VISIBLE,
+        text: "Visible",
+        sortOrder: 0,
+      },
+    });
+
+    await prisma.quoteTask.create({
+      data: {
+        organizationId: orgAId,
+        quoteId,
+        kind: QuoteTaskKind.QUOTE_PREP,
+        title: "Prep",
+        status: QuoteTaskStatus.NOT_READY,
+        isRequired: false,
+        sortOrder: 0,
+        customerVisible: false,
+      },
+    });
+    const lineRow = await prisma.quoteLineItem.findFirstOrThrow({ where: { quoteId } });
+    const execStage = await prisma.quoteLineExecutionStage.create({
+      data: {
+        organizationId: orgAId,
+        quoteLineItemId: lineRow.id,
+        title: "Stage",
+        sortOrder: 0,
+      },
+    });
+    await prisma.quoteLineExecutionTask.create({
+      data: {
+        organizationId: orgAId,
+        stageId: execStage.id,
+        title: "Task",
+        status: QuoteTaskStatus.NOT_READY,
+        isRequired: false,
+        sortOrder: 0,
+        customerVisible: true,
+        customerLabel: "Work",
+      },
+    });
+
+    const ready = await quoteMutationMarkReadyToSend(salesCtxA, fd({ quoteId }));
+    expect(ready.ok).toBe(true);
+
+    const sendCross = await quoteMutationSendQuoteToCustomerByEmail(salesCtxB, fd({ quoteId }));
+    expect(sendCross.ok).toBe(false);
+    if (!sendCross.ok) expect(sendCross.error).toMatch(/not found/i);
+
+    const sendMember = await quoteMutationSendQuoteToCustomerByEmail(memberCtxA, fd({ quoteId }));
+    expect(sendMember.ok).toBe(false);
+    if (!sendMember.ok) expect(sendMember.error).toMatch(/permission/i);
+
+    await prisma.customerContactMethod.updateMany({
+      where: { customerId: customerAId, type: CustomerContactType.EMAIL },
+      data: { okToEmail: false },
+    });
+    const sendNoOpt = await quoteMutationSendQuoteToCustomerByEmail(salesCtxA, fd({ quoteId }));
+    expect(sendNoOpt.ok).toBe(false);
+    if (!sendNoOpt.ok) expect(sendNoOpt.error).toMatch(/opt/i);
+    await prisma.customerContactMethod.updateMany({
+      where: { customerId: customerAId, type: CustomerContactType.EMAIL },
+      data: { okToEmail: true },
+    });
+
+    const send = await quoteMutationSendQuoteToCustomerByEmail(salesCtxA, fd({ quoteId }));
+    expect(send.ok).toBe(true);
+
+    const row = await prisma.quote.findUniqueOrThrow({ where: { id: quoteId } });
+    expect(row.status).toBe(QuoteStatus.SENT);
+    expect(row.sentSnapshotJson).toBeTruthy();
+
+    const portal = await prisma.portalAccessToken.findFirst({
+      where: { organizationId: orgAId, quoteId, revokedAt: null },
+    });
+    expect(portal).toBeTruthy();
+
+    const emailSent = await prisma.quoteActivityEvent.findFirst({
+      where: { quoteId, eventType: QuoteActivityEventType.QUOTE_EMAIL_DELIVERY_SENT },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(emailSent).toBeTruthy();
+
+    const quoteSent = await prisma.quoteActivityEvent.findFirst({
+      where: { quoteId, eventType: QuoteActivityEventType.QUOTE_SENT },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(quoteSent?.payload).toEqual(expect.objectContaining({ recordMethod: "EMAIL" }));
+
+    const sendAgain = await quoteMutationSendQuoteToCustomerByEmail(salesCtxA, fd({ quoteId }));
+    expect(sendAgain.ok).toBe(false);
+    if (!sendAgain.ok) expect(sendAgain.error).toMatch(/already sent/i);
+
+    const spy = vi.spyOn(transactionalEmail, "sendTransactionalEmail").mockResolvedValueOnce({ ok: false, error: "provider down" });
+    const opp2 = await prisma.opportunity.create({
+      data: {
+        organizationId: orgAId,
+        customerId: customerAId,
+        title: `Opp email fail ${suffix}`,
+        serviceType: "Remodel",
+        source: "test",
+        status: OpportunityStatus.NEW,
+        priority: OpportunityPriority.NORMAL,
+        serviceAddressTbd: true,
+        scopeIntent: "Scope",
+      },
+    });
+    await prisma.opportunityTask.create({
+      data: {
+        opportunityId: opp2.id,
+        title: "Opt",
+        kind: OpportunityTaskKind.INTAKE,
+        status: OpportunityTaskStatus.NOT_READY,
+        isRequired: false,
+      },
+    });
+    const c2 = await quoteMutationCreateDraftFromOpportunity(salesCtxA, opp2.id);
+    expect(c2.ok && c2.outcome === "created").toBe(true);
+    if (!c2.ok || c2.outcome !== "created") {
+      spy.mockRestore();
+      return;
+    }
+    const q2 = c2.quoteId;
+    await quoteMutationAddLineItem(
+      salesCtxA,
+      fd({
+        quoteId: q2,
+        title: "L2",
+        customerDescription: "D",
+        quantity: "1",
+        unitPriceCents: "200",
+        pricingMode: PricingMode.FIXED_PRICE,
+        lineMode: QuoteLineMode.REQUIRED,
+      }),
+    );
+    const lr2 = await prisma.quoteLineItem.findFirstOrThrow({ where: { quoteId: q2 } });
+    const st2 = await prisma.quoteLineExecutionStage.create({
+      data: { organizationId: orgAId, quoteLineItemId: lr2.id, title: "S", sortOrder: 0 },
+    });
+    await prisma.quoteLineExecutionTask.create({
+      data: {
+        organizationId: orgAId,
+        stageId: st2.id,
+        title: "T",
+        status: QuoteTaskStatus.NOT_READY,
+        sortOrder: 0,
+        customerVisible: true,
+        customerLabel: "L",
+      },
+    });
+    await quoteMutationMarkReadyToSend(salesCtxA, fd({ quoteId: q2 }));
+    const sendFail = await quoteMutationSendQuoteToCustomerByEmail(salesCtxA, fd({ quoteId: q2 }));
+    expect(sendFail.ok).toBe(false);
+    if (sendFail.ok) return;
+    expect(sendFail.emailDeliveryFailed).toBe(true);
+    const rowFail = await prisma.quote.findUniqueOrThrow({ where: { id: q2 } });
+    expect(rowFail.status).toBe(QuoteStatus.SENT);
+    const failEv = await prisma.quoteActivityEvent.findFirst({
+      where: { quoteId: q2, eventType: QuoteActivityEventType.QUOTE_EMAIL_DELIVERY_FAILED },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(failEv).toBeTruthy();
+    spy.mockRestore();
+
+    await prisma.quote.deleteMany({ where: { opportunityId: opp2.id } });
+    await prisma.opportunity.delete({ where: { id: opp2.id } });
     await prisma.quote.deleteMany({ where: { opportunityId: opp.id } });
     await prisma.opportunity.delete({ where: { id: opp.id } });
   });

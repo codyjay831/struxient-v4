@@ -2,24 +2,25 @@
 
 import { revalidatePath } from "next/cache";
 import { requireOrgSession } from "@/server/phase1/org-session";
-import { jobMutationUpdateTaskStatus, type JobTaskActionResult } from "@/server/phase4/job-mutations";
+import { jobMutationUpdateTaskStatus } from "@/server/phase4/job-mutations";
 import {
   jobMutationCancel,
   jobMutationComplete,
   jobMutationPause,
   jobMutationResume,
-  type JobLifecycleActionResult,
 } from "@/server/phase5/job-status-mutations";
 import {
   jobMutationCancelScheduledWork,
   jobMutationRescheduleScheduledWork,
   jobMutationScheduleJobTask,
-  type ScheduledWorkActionResult,
 } from "@/server/phase7/scheduled-work-mutations";
 import { jobMutationUpdateJobTaskCompletionRequirements } from "@/server/phase13/completion-requirement-mutations";
-import type { CompletionRequirementMutationResult } from "@/server/phase13/completion-requirement-mutations";
-
-export type { JobTaskActionResult, JobLifecycleActionResult, ScheduledWorkActionResult, CompletionRequirementMutationResult };
+import type {
+  CompletionRequirementMutationResult,
+  JobLifecycleActionResult,
+  JobTaskActionResult,
+  ScheduledWorkActionResult,
+} from "./action-types";
 
 export async function updateJobTaskStatus(
   _prev: JobTaskActionResult | undefined,

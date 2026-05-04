@@ -65,7 +65,15 @@ import {
 
 export type QuoteActionResult =
   | { ok: true; quoteId?: string; opportunityId?: string; jobId?: string }
-  | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+  | {
+      ok: false;
+      error: string;
+      fieldErrors?: Record<string, string[]>;
+      /** Present when the quote reached SENT but email delivery failed — use Customer portal to recover. */
+      quoteId?: string;
+      opportunityId?: string;
+      emailDeliveryFailed?: boolean;
+    };
 
 export function zodActionFailure(error: ZodError): { error: string; fieldErrors: Record<string, string[]> } {
   return {
@@ -1476,8 +1484,8 @@ export async function quoteMutationMarkSent(ctx: OrgSessionContext, formData: Fo
     customerId: full.customerId,
     actorUserId: ctx.userId,
     eventType: QuoteActivityEventType.QUOTE_SENT,
-    summary: `Quote #${full.displayNumber} marked sent`,
-    payload: { quoteId: full.id },
+    summary: `Quote #${full.displayNumber} recorded as sent manually (outside Struxient email)`,
+    payload: { quoteId: full.id, recordMethod: "MANUAL_OUTSIDE_STRUXIENT" },
   });
   await recordQuoteActivity(prisma, {
     organizationId: ctx.organizationId,

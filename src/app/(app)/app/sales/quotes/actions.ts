@@ -28,6 +28,7 @@ import {
   quoteMutationUpdateTaskStatus,
   zodActionFailure,
 } from "@/server/phase2/quote-mutations";
+import { quoteMutationSendQuoteToCustomerByEmail } from "@/server/phase2/quote-send-email-mutation";
 import type { QuoteActionResult } from "@/server/phase2/quote-mutations";
 import {
   quoteMutationArchiveQuoteWorkTemplate,
@@ -271,6 +272,29 @@ export async function markQuoteSent(_prev: QuoteActionResult | undefined, formDa
   if (r.ok && r.quoteId) {
     revalidateQuote(r.quoteId);
     if (r.opportunityId) {
+      revalidatePath(`/app/sales/opportunities/${r.opportunityId}`);
+    }
+  }
+  return r;
+}
+
+export async function sendQuoteToCustomerByEmail(
+  _prev: QuoteActionResult | undefined,
+  formData: FormData,
+): Promise<QuoteActionResult> {
+  const ctx = await requireOrgSession();
+  const r = await quoteMutationSendQuoteToCustomerByEmail(ctx, formData);
+  if (r.ok && r.quoteId) {
+    revalidateQuote(r.quoteId);
+    if (r.opportunityId) {
+      revalidatePath(`/app/sales/opportunities/${r.opportunityId}`);
+    }
+    revalidatePath("/app/jobs");
+  }
+  if (!r.ok && "quoteId" in r && r.quoteId) {
+    revalidateQuote(r.quoteId);
+    revalidatePath("/app/jobs");
+    if ("opportunityId" in r && r.opportunityId) {
       revalidatePath(`/app/sales/opportunities/${r.opportunityId}`);
     }
   }

@@ -12,7 +12,14 @@ import {
   toCompletionRequirementDto,
 } from "@/server/phase13/completion-requirements";
 import { allQuoteSendBlockersPass, evaluateQuoteSendReadiness } from "@/server/phase2/quote-readiness";
-import { getQuoteIdInOrganization, getQuoteWorkspace, listQuoteActivity } from "@/server/phase2/quote-queries";
+import { getQuoteEmailSendFormAvailability } from "@/server/email/quote-email-send-availability";
+import {
+  getQuoteIdInOrganization,
+  getQuoteLastProposalEmailRecipient,
+  getQuoteLatestOpenEmailDeliveryFailure,
+  getQuoteWorkspace,
+  listQuoteActivity,
+} from "@/server/phase2/quote-queries";
 import { listActiveQuoteWorkTemplatesGrouped } from "@/server/phase3/template-queries";
 import { findActivePortalTokenForQuote } from "@/server/phase8/portal-token-queries";
 import { canManageCustomerPortalSubmissions, canViewCustomerPortalSubmissions } from "@/lib/phase9-permissions";
@@ -59,6 +66,13 @@ export default async function QuoteWorkspacePage({ params }: { params: Promise<{
   }
 
   const activity = await listQuoteActivity(ctx.organizationId, quote.id);
+  const emailSendAvail = getQuoteEmailSendFormAvailability();
+  const emailDeliveryFailure = isQuoteStructurallyLocked(quote.status)
+    ? await getQuoteLatestOpenEmailDeliveryFailure(ctx.organizationId, quote.id)
+    : null;
+  const lastProposalEmailRecipient = isQuoteStructurallyLocked(quote.status)
+    ? await getQuoteLastProposalEmailRecipient(ctx.organizationId, quote.id)
+    : null;
   const membersRaw = await listOrganizationMembers(ctx.organizationId);
   const members = membersRaw.map((m) => ({
     id: m.user.id,
@@ -286,6 +300,12 @@ export default async function QuoteWorkspacePage({ params }: { params: Promise<{
     previewResolution,
     workTemplates,
     canManageWorkTemplates: canManageQuoteWorkTemplates(ctx.role),
+    emailSend: {
+      canAttemptSend: emailSendAvail.canAttemptSend,
+      blockedReason: emailSendAvail.canAttemptSend ? null : emailSendAvail.reason,
+    },
+    emailDeliveryFailure,
+    lastProposalEmailRecipient,
     customerPortal: {
       showSection: showCustomerPortalSection,
       hasActiveToken: Boolean(activePortalToken),
